@@ -191,6 +191,7 @@
                                     <i class="fas fa-plus"></i>
                                 </button>
                             </div>
+                            <div id="clienteResultados" class="list-group position-absolute w-100" style="z-index: 1000; display: none;"></div>
                             <input type="hidden" id="cliente_id">
                             <div id="clienteInfo" class="mt-2" style="display: none;">
                                 <small class="text-success">
@@ -240,7 +241,7 @@ function nuevaReserva() {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     document.getElementById('fecha_salida').value = tomorrow.toISOString().split('T')[0];
-    
+
     $('#modalNuevaReserva').modal('show');
 }
 
@@ -286,7 +287,7 @@ function generarFactura(reservaId) {
 $('#fecha_entrada, #fecha_salida').on('change', function() {
     const fechaEntrada = $('#fecha_entrada').val();
     const fechaSalida = $('#fecha_salida').val();
-    
+
     if (fechaEntrada && fechaSalida && fechaEntrada < fechaSalida) {
         showLoading();
         $.get('{% url "hotel:api_habitaciones_disponibles" %}', {
@@ -296,7 +297,7 @@ $('#fecha_entrada, #fecha_salida').on('change', function() {
         .done(function(data) {
             const select = $('#habitacion_id');
             select.empty();
-            
+
             if (data.habitaciones.length === 0) {
                 select.append('<option value="">No hay habitaciones disponibles</option>');
             } else {
@@ -318,23 +319,48 @@ $('#fecha_entrada, #fecha_salida').on('change', function() {
 // Buscar clientes con autocompletado
 $('#buscarCliente').on('input', function() {
     const query = $(this).val();
-    
+
     if (query.length < 2) {
         $('#clienteInfo').hide();
         $('#cliente_id').val('');
         return;
     }
-    
+
     $.get('{% url "hotel:api_buscar_cliente" %}', { q: query })
     .done(function(data) {
+        const resultadosDiv = $('#clienteResultados');
+        resultadosDiv.empty();
+
         if (data.clientes.length > 0) {
-            // Por simplicidad, selecciona el primer resultado
-            const cliente = data.clientes[0];
-            $('#cliente_id').val(cliente.id);
-            $('#clienteNombre').text(cliente.nombre_completo);
-            $('#clienteInfo').show();
+            data.clientes.forEach(function(cliente) {
+                resultadosDiv.append(`
+                    <button type="button" class="list-group-item list-group-item-action"
+                            onclick="seleccionarCliente(${cliente.id}, '${cliente.nombre_completo}', '${cliente.numero_documento}')">
+                        <strong>${cliente.nombre_completo}</strong><br>
+                        <small class="text-muted">${cliente.numero_documento}</small>
+                    </button>
+                `);
+            });
+            resultadosDiv.show();
+        } else {
+            resultadosDiv.hide();
         }
     });
+});
+
+function seleccionarCliente(id, nombre, documento) {
+    $('#cliente_id').val(id);
+    $('#buscarCliente').val(`${nombre} (${documento})`);
+    $('#clienteNombre').text(nombre);
+    $('#clienteInfo').show();
+    $('#clienteResultados').hide();
+}
+
+// Ocultar resultados cuando se hace clic fuera
+$(document).on('click', function(event) {
+    if (!$(event.target).closest('#buscarCliente, #clienteResultados').length) {
+        $('#clienteResultados').hide();
+    }
 });
 
 // Guardar reserva (igual que en dashboard)
