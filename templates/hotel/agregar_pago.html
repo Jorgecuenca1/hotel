@@ -1,0 +1,297 @@
+{% extends 'base.html' %}
+
+{% block title %}Agregar Pago - Reserva {{ reserva.numero_reserva }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-credit-card"></i> Agregar Pago</h1>
+        <p class="mb-0">Reserva {{ reserva.numero_reserva }} - {{ reserva.cliente.nombre_completo }}</p>
+    </div>
+    <div>
+        <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Volver a Reserva
+        </a>
+    </div>
+</div>
+
+<!-- Información de la reserva y estado financiero -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Información de la Reserva</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Cliente:</strong> {{ reserva.cliente.nombre_completo }}</p>
+                <p><strong>Habitación:</strong> {{ reserva.habitacion.numero }} - {{ reserva.habitacion.tipo.nombre }}</p>
+                <p><strong>Fechas:</strong> {{ reserva.fecha_entrada|date:"d/m/Y" }} - {{ reserva.fecha_salida|date:"d/m/Y" }}</p>
+                <p class="mb-0"><strong>Estado:</strong> 
+                    <span class="badge 
+                        {% if reserva.estado == 'pendiente' %}bg-warning
+                        {% elif reserva.estado == 'confirmada' %}bg-info
+                        {% elif reserva.estado == 'en_curso' %}bg-success
+                        {% elif reserva.estado == 'finalizada' %}bg-secondary
+                        {% else %}bg-danger{% endif %}">
+                        {{ reserva.get_estado_display }}
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-calculator"></i> Resumen Financiero</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6">
+                        <h4 class="text-primary">${{ total_reserva|floatformat:2 }}</h4>
+                        <small>Total a Pagar</small>
+                    </div>
+                    <div class="col-6">
+                        <h4 class="{% if saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">
+                            ${{ saldo_pendiente|floatformat:2 }}
+                        </h4>
+                        <small>
+                            {% if saldo_pendiente > 0 %}Saldo Pendiente{% else %}Pagado Completo{% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Formulario de agregar pago -->
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-plus-circle"></i> Registrar Nuevo Pago</h5>
+            </div>
+            <div class="card-body">
+                {% if saldo_pendiente <= 0 %}
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> 
+                    <strong>Reserva Pagada Completamente</strong><br>
+                    No hay saldo pendiente por pagar.
+                </div>
+                <div class="d-flex justify-content-center">
+                    <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-primary">
+                        <i class="fas fa-arrow-left"></i> Volver a Reserva
+                    </a>
+                </div>
+                {% else %}
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="monto" class="form-label">Monto a Pagar <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" name="monto" id="monto" class="form-control" 
+                                       step="0.01" min="0.01" max="{{ saldo_pendiente }}" 
+                                       value="{{ saldo_pendiente|floatformat:2 }}" required onchange="actualizarTipoPago()">
+                            </div>
+                            <small class="text-muted">
+                                Máximo: ${{ saldo_pendiente|floatformat:2 }} (saldo pendiente)
+                            </small>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="tipo_pago" class="form-label">Tipo de Pago</label>
+                            <select name="tipo_pago" id="tipo_pago" class="form-select" onchange="actualizarMonto()">
+                                {% for value, label in tipos_pago %}
+                                <option value="{{ value }}" {% if forloop.first %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="metodo_pago" class="form-label">Método de Pago <span class="text-danger">*</span></label>
+                            <select name="metodo_pago" id="metodo_pago" class="form-select" required>
+                                <option value="">Seleccionar método...</option>
+                                {% for value, label in metodos_pago %}
+                                <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="referencia" class="form-label">Referencia</label>
+                            <input type="text" name="referencia" id="referencia" class="form-control" 
+                                   placeholder="Número de transacción, voucher, etc.">
+                            <small class="text-muted">Opcional</small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="observaciones" class="form-label">Observaciones</label>
+                        <textarea name="observaciones" id="observaciones" class="form-control" rows="3" 
+                                  placeholder="Comentarios adicionales sobre el pago..."></textarea>
+                    </div>
+                    
+                    <!-- Resumen del pago -->
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle"></i> Resumen del Pago</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Monto a registrar:</strong> $<span id="monto-resumen">{{ saldo_pendiente|floatformat:2 }}</span>
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Saldo restante:</strong> $<span id="saldo-restante">0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-save"></i> Registrar Pago
+                        </button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Instrucciones</h5>
+            </div>
+            <div class="card-body">
+                <ol class="mb-3">
+                    <li>Ingrese el monto a pagar</li>
+                    <li>Seleccione el tipo de pago</li>
+                    <li>Elija el método de pago</li>
+                    <li>Agregue referencia si aplica</li>
+                    <li>Haga clic en "Registrar Pago"</li>
+                </ol>
+                
+                <h6><i class="fas fa-credit-card text-info"></i> Tipos de Pago:</h6>
+                <ul class="small mb-3">
+                    <li><strong>Abono:</strong> Pago parcial</li>
+                    <li><strong>Pago Total:</strong> Liquidación completa</li>
+                </ul>
+                
+                <h6><i class="fas fa-exclamation-circle text-warning"></i> Importante:</h6>
+                <ul class="small mb-0">
+                    <li>El monto no puede exceder el saldo pendiente</li>
+                    <li>Todos los pagos quedan registrados</li>
+                    <li>La fecha se registra automáticamente</li>
+                </ul>
+            </div>
+        </div>
+        
+        {% if saldo_pendiente > 0 %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-calculator"></i> Acciones Rápidas</h6>
+            </div>
+            <div class="card-body">
+                <button type="button" class="btn btn-outline-primary btn-sm w-100 mb-2" 
+                        onclick="establecerMonto({{ saldo_pendiente }})">
+                    <i class="fas fa-money-bill"></i> Pagar Todo (${{ saldo_pendiente|floatformat:2 }})
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm w-100" 
+                        onclick="establecerMonto({{ saldo_pendiente }} / 2)">
+                    <i class="fas fa-hand-holding-usd"></i> Pagar Mitad ($<span id="mitad-saldo"></span>)
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const saldoPendiente = {{ saldo_pendiente }};
+
+function actualizarTipoPago() {
+    const monto = parseFloat(document.getElementById('monto').value) || 0;
+    const tipoPagoSelect = document.getElementById('tipo_pago');
+    
+    if (monto >= saldoPendiente) {
+        tipoPagoSelect.value = 'pago_total';
+    } else {
+        tipoPagoSelect.value = 'abono';
+    }
+    
+    actualizarResumen();
+}
+
+function actualizarMonto() {
+    const tipoPago = document.getElementById('tipo_pago').value;
+    const montoInput = document.getElementById('monto');
+    
+    if (tipoPago === 'pago_total') {
+        montoInput.value = saldoPendiente.toFixed(2);
+    }
+    
+    actualizarResumen();
+}
+
+function actualizarResumen() {
+    const monto = parseFloat(document.getElementById('monto').value) || 0;
+    const saldoRestante = Math.max(0, saldoPendiente - monto);
+    
+    document.getElementById('monto-resumen').textContent = monto.toFixed(2);
+    document.getElementById('saldo-restante').textContent = saldoRestante.toFixed(2);
+}
+
+function establecerMonto(monto) {
+    document.getElementById('monto').value = monto.toFixed(2);
+    actualizarTipoPago();
+}
+
+// Validar al enviar el formulario
+document.querySelector('form')?.addEventListener('submit', function(e) {
+    const monto = parseFloat(document.getElementById('monto').value) || 0;
+    const metodoPago = document.getElementById('metodo_pago').value;
+    
+    if (monto <= 0) {
+        e.preventDefault();
+        alert('El monto debe ser mayor a cero');
+        return;
+    }
+    
+    if (monto > saldoPendiente) {
+        e.preventDefault();
+        alert('El monto no puede ser mayor al saldo pendiente ($' + saldoPendiente.toFixed(2) + ')');
+        return;
+    }
+    
+    if (!metodoPago) {
+        e.preventDefault();
+        alert('Por favor seleccione un método de pago');
+        return;
+    }
+});
+
+// Inicializar
+document.addEventListener('DOMContentLoaded', function() {
+    actualizarResumen();
+    
+    // Calcular y mostrar la mitad del saldo
+    const mitadSaldo = (saldoPendiente / 2).toFixed(2);
+    const spanMitad = document.getElementById('mitad-saldo');
+    if (spanMitad) {
+        spanMitad.textContent = mitadSaldo;
+    }
+});
+</script>
+{% endblock %}

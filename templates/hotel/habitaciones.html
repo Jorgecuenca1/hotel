@@ -1,0 +1,282 @@
+{% extends 'base.html' %}
+
+{% block title %}Habitaciones - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-bed"></i> Gestión de Habitaciones</h1>
+        <p class="mb-0">Administre el estado y disponibilidad de las habitaciones</p>
+    </div>
+    <div>
+        <a href="{% url 'hotel:habitacion_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Nueva Habitación
+        </a>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Estado</label>
+                <select name="estado" class="form-select">
+                    <option value="">Todos los estados</option>
+                    <option value="disponible" {% if filtros.estado == 'disponible' %}selected{% endif %}>Disponible</option>
+                    <option value="ocupada" {% if filtros.estado == 'ocupada' %}selected{% endif %}>Ocupada</option>
+                    <option value="mantenimiento" {% if filtros.estado == 'mantenimiento' %}selected{% endif %}>Mantenimiento</option>
+                    <option value="limpieza" {% if filtros.estado == 'limpieza' %}selected{% endif %}>Limpieza</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Tipo</label>
+                <select name="tipo" class="form-select">
+                    <option value="">Todos los tipos</option>
+                    {% for tipo in tipos_habitacion %}
+                    <option value="{{ tipo.id }}" {% if filtros.tipo_id == tipo.id|stringformat:"s" %}selected{% endif %}>{{ tipo.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Piso</label>
+                <select name="piso" class="form-select">
+                    <option value="">Todos los pisos</option>
+                    {% for piso in pisos %}
+                    <option value="{{ piso }}" {% if filtros.piso == piso|stringformat:"s" %}selected{% endif %}>Piso {{ piso }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="fas fa-search"></i> Filtrar
+                </button>
+                <a href="{% url 'hotel:habitaciones' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-times"></i> Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Grid de habitaciones -->
+<div class="row">
+    {% for habitacion in habitaciones %}
+    <div class="col-md-6 col-lg-4 col-xl-3 mb-4">
+        <div class="card h-100 habitacion-card" data-habitacion="{{ habitacion.id }}">
+            <div class="card-header text-center {% if habitacion.estado == 'disponible' %}bg-success{% elif habitacion.estado == 'ocupada' %}bg-danger{% elif habitacion.estado == 'mantenimiento' %}bg-warning{% else %}bg-info{% endif %}">
+                <h5 class="mb-0 text-white">Habitación {{ habitacion.numero }}</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-2"><strong>Tipo:</strong> {{ habitacion.tipo.nombre }}</p>
+                <p class="mb-2"><strong>Piso:</strong> {{ habitacion.piso }}</p>
+                <p class="mb-2"><strong>Precio:</strong> ${{ habitacion.tipo.precio_por_noche }}/noche</p>
+                <p class="mb-2"><strong>Capacidad:</strong> {{ habitacion.tipo.capacidad_personas }} personas</p>
+                
+                <div class="mb-3">
+                    <span class="badge {% if habitacion.estado == 'disponible' %}bg-success{% elif habitacion.estado == 'ocupada' %}bg-danger{% elif habitacion.estado == 'mantenimiento' %}bg-warning{% else %}bg-info{% endif %}">
+                        {{ habitacion.get_estado_display }}
+                    </span>
+                </div>
+                
+                {% if habitacion.descripcion %}
+                <p class="text-muted small">{{ habitacion.descripcion|truncatewords:10 }}</p>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <!-- Botón cambiar estado -->
+                <div class="mb-2">
+                    <div class="btn-group w-100" role="group">
+                        <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-exchange-alt"></i> Cambiar Estado
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="cambiarEstado({{ habitacion.id }}, 'disponible', this)">
+                                <i class="fas fa-check text-success"></i> Disponible
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="cambiarEstado({{ habitacion.id }}, 'ocupada', this)">
+                                <i class="fas fa-door-closed text-danger"></i> Ocupada
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="cambiarEstado({{ habitacion.id }}, 'mantenimiento', this)">
+                                <i class="fas fa-tools text-warning"></i> Mantenimiento
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="cambiarEstado({{ habitacion.id }}, 'limpieza', this)">
+                                <i class="fas fa-broom text-info"></i> Limpieza
+                            </a></li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- Botones de gestión -->
+                <div class="d-flex gap-1">
+                    <a href="{% url 'hotel:habitacion_edit' habitacion.id %}" class="btn btn-sm btn-outline-warning flex-fill" title="Editar">
+                        <i class="fas fa-edit"></i> Editar
+                    </a>
+                    <a href="{% url 'hotel:habitacion_delete' habitacion.id %}" class="btn btn-sm btn-outline-danger flex-fill" title="Eliminar">
+                        <i class="fas fa-trash"></i> Eliminar
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle"></i>
+            No se encontraron habitaciones con los filtros aplicados.
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Resumen estadístico -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-bar"></i> Resumen de Ocupación</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <div class="border rounded p-3">
+                            <h3 class="text-success">{{ habitaciones|length }}</h3>
+                            <p class="mb-0">Total Habitaciones</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border rounded p-3">
+                            <h3 class="text-success" id="count-disponibles">0</h3>
+                            <p class="mb-0">Disponibles</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border rounded p-3">
+                            <h3 class="text-danger" id="count-ocupadas">0</h3>
+                            <p class="mb-0">Ocupadas</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border rounded p-3">
+                            <h3 class="text-warning" id="count-mantenimiento">0</h3>
+                            <p class="mb-0">Mantenimiento</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function cambiarEstado(habitacionId, nuevoEstado, element) {
+    const estadoTexto = {
+        'disponible': 'Disponible',
+        'ocupada': 'Ocupada', 
+        'mantenimiento': 'En Mantenimiento',
+        'limpieza': 'En Limpieza'
+    };
+    
+    const colores = {
+        'disponible': 'bg-success',
+        'ocupada': 'bg-danger',
+        'mantenimiento': 'bg-warning',
+        'limpieza': 'bg-info'
+    };
+    
+    Swal.fire({
+        title: '¿Cambiar estado?',
+        text: `¿Desea cambiar el estado a "${estadoTexto[nuevoEstado]}"?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cambiar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            showLoading();
+            
+            // Obtener token CSRF
+            const csrfToken = $('[name=csrfmiddlewaretoken]').val() || getCSRFToken();
+            
+            $.ajax({
+                url: `/habitaciones/${habitacionId}/cambiar-estado/`,
+                method: 'POST',
+                data: JSON.stringify({ estado: nuevoEstado }),
+                contentType: 'application/json',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                },
+                success: function(response) {
+                    if (response.success) {
+                        showNotification('success', 'Éxito', 'Estado cambiado correctamente');
+                        
+                        // Actualizar la tarjeta dinámicamente sin recargar
+                        const habitacionCard = $(element).closest('.habitacion-card');
+                        const cardHeader = habitacionCard.find('.card-header');
+                        
+                        // Quitar todas las clases de color
+                        cardHeader.removeClass('bg-success bg-danger bg-warning bg-info');
+                        // Agregar el nuevo color
+                        cardHeader.addClass(colores[nuevoEstado]);
+                        
+                        // Actualizar el badge de estado
+                        const estadoBadge = habitacionCard.find('.badge');
+                        estadoBadge.removeClass('bg-success bg-danger bg-warning bg-info');
+                        estadoBadge.addClass(colores[nuevoEstado]);
+                        estadoBadge.text(estadoTexto[nuevoEstado]);
+                        
+                        // Recalcular estadísticas
+                        calcularEstadisticas();
+                        
+                    } else {
+                        showNotification('error', 'Error', response.error || 'No se pudo cambiar el estado');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error AJAX:', error);
+                    showNotification('error', 'Error', 'Error de conexión: ' + error);
+                },
+                complete: function() {
+                    hideLoading();
+                }
+            });
+        }
+    });
+}
+
+// Calcular estadísticas de habitaciones
+function calcularEstadisticas() {
+    let disponibles = 0, ocupadas = 0, mantenimiento = 0, limpieza = 0;
+    
+    $('.habitacion-card').each(function() {
+        const cardHeader = $(this).find('.card-header');
+        if (cardHeader.hasClass('bg-success')) disponibles++;
+        else if (cardHeader.hasClass('bg-danger')) ocupadas++;
+        else if (cardHeader.hasClass('bg-warning')) mantenimiento++;
+        else if (cardHeader.hasClass('bg-info')) limpieza++;
+    });
+    
+    $('#count-disponibles').text(disponibles);
+    $('#count-ocupadas').text(ocupadas);
+    $('#count-mantenimiento').text(mantenimiento);
+}
+
+// Animaciones para las tarjetas
+$(document).ready(function() {
+    $('.habitacion-card').hover(
+        function() {
+            $(this).addClass('shadow-lg').css('transform', 'translateY(-5px)');
+        },
+        function() {
+            $(this).removeClass('shadow-lg').css('transform', 'translateY(0)');
+        }
+    );
+    
+    // Calcular estadísticas al cargar la página
+    calcularEstadisticas();
+});
+</script>
+{% endblock %}

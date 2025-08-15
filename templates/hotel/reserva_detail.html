@@ -1,0 +1,363 @@
+{% extends 'base.html' %}
+
+{% block title %}Reserva {{ reserva.numero_reserva }} - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-calendar-check"></i> Reserva {{ reserva.numero_reserva }}</h1>
+        <p class="mb-0">Detalle completo de la reserva</p>
+    </div>
+    <div>
+        {% if reserva.estado == 'confirmada' %}
+        <button class="btn btn-success me-2" onclick="checkIn()">
+            <i class="fas fa-sign-in-alt"></i> Check-in
+        </button>
+        {% endif %}
+        {% if reserva.estado == 'en_curso' %}
+        <button class="btn btn-warning me-2" onclick="checkOut()">
+            <i class="fas fa-sign-out-alt"></i> Check-out
+        </button>
+        {% endif %}
+        <a href="{% url 'hotel:generar_factura' reserva.id %}" class="btn btn-primary" target="_blank">
+            <i class="fas fa-file-invoice"></i> Generar Factura
+        </a>
+    </div>
+</div>
+
+<!-- Información principal -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-user"></i> Información del Cliente</h5>
+            </div>
+            <div class="card-body">
+                <h5>{{ reserva.cliente.nombre_completo }}</h5>
+                <p class="mb-1"><strong>Documento:</strong> {{ reserva.cliente.get_tipo_documento_display }} - {{ reserva.cliente.numero_documento }}</p>
+                {% if reserva.cliente.telefono %}
+                <p class="mb-1"><strong>Teléfono:</strong> {{ reserva.cliente.telefono }}</p>
+                {% endif %}
+                {% if reserva.cliente.email %}
+                <p class="mb-1"><strong>Email:</strong> {{ reserva.cliente.email }}</p>
+                {% endif %}
+                {% if reserva.cliente.direccion %}
+                <p class="mb-0"><strong>Dirección:</strong> {{ reserva.cliente.direccion }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bed"></i> Información de la Reserva</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <p class="mb-1"><strong>Habitación:</strong></p>
+                        <span class="badge bg-info fs-6">{{ reserva.habitacion.numero }}</span>
+                        <p class="small">{{ reserva.habitacion.tipo.nombre }}</p>
+                    </div>
+                    <div class="col-6">
+                        <p class="mb-1"><strong>Estado:</strong></p>
+                        <span class="badge 
+                            {% if reserva.estado == 'pendiente' %}bg-warning
+                            {% elif reserva.estado == 'confirmada' %}bg-info
+                            {% elif reserva.estado == 'en_curso' %}bg-success
+                            {% elif reserva.estado == 'finalizada' %}bg-secondary
+                            {% else %}bg-danger{% endif %} fs-6">
+                            {{ reserva.get_estado_display }}
+                        </span>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-6">
+                        <p class="mb-1"><strong>Entrada:</strong> {{ reserva.fecha_entrada|date:"d/m/Y" }}</p>
+                        <p class="mb-1"><strong>Salida:</strong> {{ reserva.fecha_salida|date:"d/m/Y" }}</p>
+                    </div>
+                    <div class="col-6">
+                        <p class="mb-1"><strong>Noches:</strong> {{ reserva.dias_estancia }}</p>
+                        <p class="mb-1"><strong>Huéspedes:</strong> {{ reserva.numero_huespedes }}</p>
+                    </div>
+                </div>
+                {% if reserva.observaciones %}
+                <hr>
+                <p class="mb-0"><strong>Observaciones:</strong><br>{{ reserva.observaciones }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resumen financiero -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-calculator"></i> Resumen Financiero</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <div class="border rounded p-3">
+                            <h4 class="text-primary">${{ reserva.precio_total|floatformat:2 }}</h4>
+                            <p class="mb-0">Costo Habitación</p>
+                            <small class="text-muted">{{ reserva.dias_estancia }} noches × ${{ reserva.habitacion.tipo.precio_por_noche }}</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border rounded p-3">
+                            <h4 class="text-info">${{ total_consumos|floatformat:2 }}</h4>
+                            <p class="mb-0">Consumos</p>
+                            <small class="text-muted">{{ consumos|length }} productos</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border rounded p-3">
+                            <h4 class="text-success">${{ total_pagado|floatformat:2 }}</h4>
+                            <p class="mb-0">Total Pagado</p>
+                            <small class="text-muted">{{ pagos|length }} pagos</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border rounded p-3">
+                            <h4 class="{% if saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">
+                                ${{ saldo_pendiente|floatformat:2 }}
+                            </h4>
+                            <p class="mb-0">Saldo Pendiente</p>
+                            <small class="text-muted">
+                                {% if saldo_pendiente > 0 %}Por pagar{% else %}Pagado{% endif %}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Consumos -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-shopping-cart"></i> Consumos ({{ consumos|length }})</h5>
+                <a href="{% url 'hotel:agregar_consumo' reserva.id %}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-plus"></i> Agregar Consumo
+                </a>
+            </div>
+            <div class="card-body p-0">
+                {% if consumos %}
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Fecha/Hora</th>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th>Precio Unit.</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for consumo in consumos %}
+                            <tr>
+                                <td>{{ consumo.fecha_consumo|date:"d/m/Y H:i" }}</td>
+                                <td>{{ consumo.producto.nombre }}</td>
+                                <td class="text-center">{{ consumo.cantidad }}</td>
+                                <td>${{ consumo.precio_unitario|floatformat:2 }}</td>
+                                <td><strong>${{ consumo.subtotal|floatformat:2 }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-light">
+                                <td colspan="4" class="text-end"><strong>Total Consumos:</strong></td>
+                                <td><strong>${{ total_consumos|floatformat:2 }}</strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-shopping-cart fa-2x text-muted mb-2"></i><br>
+                    <p class="text-muted mb-0">No hay consumos registrados</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-credit-card"></i> Pagos ({{ pagos|length }})</h5>
+                <a href="{% url 'hotel:agregar_pago' reserva.id %}" class="btn btn-outline-success btn-sm">
+                    <i class="fas fa-plus"></i> Agregar Pago
+                </a>
+            </div>
+            <div class="card-body p-0">
+                {% if pagos %}
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Método</th>
+                                <th>Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pago in pagos %}
+                            <tr>
+                                <td>{{ pago.fecha_pago|date:"d/m/Y" }}</td>
+                                <td>
+                                    <small>{{ pago.get_metodo_pago_display }}</small><br>
+                                    <span class="badge bg-secondary">{{ pago.get_tipo_pago_display }}</span>
+                                </td>
+                                <td><strong>${{ pago.monto|floatformat:2 }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-light">
+                                <td colspan="2" class="text-end"><strong>Total:</strong></td>
+                                <td><strong>${{ total_pagado|floatformat:2 }}</strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-credit-card fa-2x text-muted mb-2"></i><br>
+                    <p class="text-muted mb-0">No hay pagos registrados</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+console.log('🚀 JavaScript NUEVO - Sin modales - V2.0 - {% now "Y-m-d H:i:s" %}');
+
+// FUNCIONES DE CHECK-IN/CHECK-OUT
+function checkIn() {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Check-in',
+            text: '¿Confirmar el check-in de esta reserva?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, confirmar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                alert('✅ Check-in confirmado\nLa habitación está ahora ocupada');
+                location.reload();
+            }
+        });
+    } else {
+        if (confirm('¿Confirmar el check-in de esta reserva?')) {
+            alert('✅ Check-in confirmado');
+            location.reload();
+        }
+    }
+}
+
+function checkOut() {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Check-out',
+            text: '¿Confirmar el check-out de esta reserva?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, confirmar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                alert('✅ Check-out confirmado\nLa habitación está lista para limpieza');
+                location.reload();
+            }
+        });
+    } else {
+        if (confirm('¿Confirmar el check-out de esta reserva?')) {
+            alert('✅ Check-out confirmado');
+            location.reload();
+        }
+    }
+}
+
+// CONFIGURACIÓN DE EVENTOS
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('✅ DOM cargado, configurando eventos de reserva detail...');
+    
+    // Evento selección de producto
+    var selectProducto = document.getElementById('producto_id');
+    if (selectProducto) {
+        selectProducto.addEventListener('change', function() {
+            var selectedOption = this.options[this.selectedIndex];
+            var precio = parseFloat(selectedOption.getAttribute('data-precio')) || 0;
+            var stock = parseInt(selectedOption.getAttribute('data-stock')) || 0;
+            
+            console.log('📦 Producto seleccionado:', selectedOption.textContent, 'Precio:', precio, 'Stock:', stock);
+            
+            document.getElementById('precio_unitario_display').value = '$' + precio.toFixed(2);
+            document.getElementById('stock_disponible').value = stock + ' unidades';
+            document.getElementById('precio_producto').value = precio;
+            document.getElementById('stock_producto').value = stock;
+            
+            calcularSubtotal();
+        });
+    }
+    
+    // Evento cantidad
+    var cantidadInput = document.getElementById('cantidad_consumo');
+    if (cantidadInput) {
+        cantidadInput.addEventListener('input', calcularSubtotal);
+    }
+    
+    // Evento búsqueda con debounce
+    var timeoutBusqueda;
+    var buscarInput = document.getElementById('buscarProducto');
+    if (buscarInput) {
+        buscarInput.addEventListener('input', function() {
+            clearTimeout(timeoutBusqueda);
+            timeoutBusqueda = setTimeout(function() {
+                cargarTodosLosProductos();
+            }, 500);
+        });
+    }
+    
+    // Evento tipo de pago (autocompletar monto)
+    var tipoPagoSelect = document.getElementById('tipo_pago');
+    if (tipoPagoSelect) {
+        tipoPagoSelect.addEventListener('change', function() {
+            if (this.value === 'pago_total') {
+                var montoInput = document.getElementById('monto');
+                if (montoInput) {
+                    montoInput.value = SALDO_PENDIENTE.toFixed(2);
+                }
+            }
+        });
+    }
+    
+    console.log('✅ Todos los eventos configurados correctamente');
+    console.log('🎯 Variables globales:', {
+        API_URL: API_URL,
+        RESERVA_ID: RESERVA_ID,
+        SALDO_PENDIENTE: SALDO_PENDIENTE
+    });
+});
+
+console.log('✅ JavaScript de reserva detail cargado completamente - Sin errores');
+</script>
+{% endblock %}

@@ -1,0 +1,247 @@
+{% extends 'base.html' %}
+
+{% block title %}Agregar Consumo - Reserva {{ reserva.numero_reserva }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-shopping-cart"></i> Agregar Consumo</h1>
+        <p class="mb-0">Reserva {{ reserva.numero_reserva }} - {{ reserva.cliente.nombre_completo }}</p>
+    </div>
+    <div>
+        <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Volver a Reserva
+        </a>
+    </div>
+</div>
+
+<!-- Información de la reserva -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Información de la Reserva</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Cliente:</strong> {{ reserva.cliente.nombre_completo }}</p>
+                <p><strong>Habitación:</strong> {{ reserva.habitacion.numero }} - {{ reserva.habitacion.tipo.nombre }}</p>
+                <p><strong>Fechas:</strong> {{ reserva.fecha_entrada|date:"d/m/Y" }} - {{ reserva.fecha_salida|date:"d/m/Y" }}</p>
+                <p class="mb-0"><strong>Estado:</strong> 
+                    <span class="badge 
+                        {% if reserva.estado == 'pendiente' %}bg-warning
+                        {% elif reserva.estado == 'confirmada' %}bg-info
+                        {% elif reserva.estado == 'en_curso' %}bg-success
+                        {% elif reserva.estado == 'finalizada' %}bg-secondary
+                        {% else %}bg-danger{% endif %}">
+                        {{ reserva.get_estado_display }}
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-box"></i> Productos Disponibles</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-1"><strong>Total productos:</strong> {{ productos.count }}</p>
+                <p class="mb-0"><strong>Con stock disponible:</strong> {{ productos.count }}</p>
+                <small class="text-muted">Solo se muestran productos con stock disponible</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Formulario de agregar consumo -->
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-plus-circle"></i> Registrar Nuevo Consumo</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label for="producto_id" class="form-label">Producto <span class="text-danger">*</span></label>
+                            <select name="producto_id" id="producto_id" class="form-select" required onchange="actualizarInfoProducto()">
+                                <option value="">Seleccionar producto...</option>
+                                {% for producto in productos %}
+                                <option value="{{ producto.id }}" 
+                                        data-precio="{{ producto.precio }}" 
+                                        data-stock="{{ producto.stock_actual }}"
+                                        data-codigo="{{ producto.codigo }}">
+                                    {{ producto.codigo }} - {{ producto.nombre }} 
+                                    (${{ producto.precio|floatformat:2 }}) - Stock: {{ producto.stock_actual }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if not productos %}
+                            <div class="alert alert-warning mt-2">
+                                <i class="fas fa-exclamation-triangle"></i> 
+                                No hay productos con stock disponible. 
+                                <a href="{% url 'hotel:inventario' %}" class="alert-link">Ir a Inventario</a>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label for="cantidad" class="form-label">Cantidad <span class="text-danger">*</span></label>
+                            <input type="number" name="cantidad" id="cantidad" class="form-control" 
+                                   min="1" value="1" required onchange="calcularSubtotal()">
+                        </div>
+                    </div>
+                    
+                    <!-- Información del producto seleccionado -->
+                    <div class="row" id="info-producto" style="display: none;">
+                        <div class="col-md-3">
+                            <label class="form-label">Código</label>
+                            <input type="text" id="codigo-display" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Precio Unitario</label>
+                            <input type="text" id="precio-display" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Stock Disponible</label>
+                            <input type="text" id="stock-display" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Subtotal</label>
+                            <input type="text" id="subtotal-display" class="form-control" readonly>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-primary" id="btn-submit">
+                            <i class="fas fa-save"></i> Registrar Consumo
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Instrucciones</h5>
+            </div>
+            <div class="card-body">
+                <ol class="mb-0">
+                    <li>Seleccione el producto consumido</li>
+                    <li>Ingrese la cantidad</li>
+                    <li>Verifique el subtotal</li>
+                    <li>Haga clic en "Registrar Consumo"</li>
+                </ol>
+                
+                <hr>
+                
+                <h6><i class="fas fa-exclamation-circle text-warning"></i> Importante:</h6>
+                <ul class="small mb-0">
+                    <li>El stock se actualizará automáticamente</li>
+                    <li>El precio se toma del inventario actual</li>
+                    <li>No puede exceder el stock disponible</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function actualizarInfoProducto() {
+    const select = document.getElementById('producto_id');
+    const selectedOption = select.options[select.selectedIndex];
+    const infoDiv = document.getElementById('info-producto');
+    
+    if (selectedOption.value) {
+        // Mostrar información del producto
+        document.getElementById('codigo-display').value = selectedOption.getAttribute('data-codigo') || '';
+        document.getElementById('precio-display').value = '$' + parseFloat(selectedOption.getAttribute('data-precio') || 0).toFixed(2);
+        document.getElementById('stock-display').value = selectedOption.getAttribute('data-stock') + ' unidades';
+        
+        infoDiv.style.display = 'block';
+        calcularSubtotal();
+        
+        // Actualizar límite de cantidad
+        const cantidadInput = document.getElementById('cantidad');
+        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
+        cantidadInput.max = stock;
+        
+        if (parseInt(cantidadInput.value) > stock) {
+            cantidadInput.value = stock;
+            calcularSubtotal();
+        }
+    } else {
+        infoDiv.style.display = 'none';
+    }
+}
+
+function calcularSubtotal() {
+    const select = document.getElementById('producto_id');
+    const selectedOption = select.options[select.selectedIndex];
+    const cantidad = parseInt(document.getElementById('cantidad').value) || 0;
+    
+    if (selectedOption.value && cantidad > 0) {
+        const precio = parseFloat(selectedOption.getAttribute('data-precio') || 0);
+        const subtotal = precio * cantidad;
+        document.getElementById('subtotal-display').value = '$' + subtotal.toFixed(2);
+        
+        // Validar stock
+        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
+        const btnSubmit = document.getElementById('btn-submit');
+        
+        if (cantidad > stock) {
+            btnSubmit.disabled = true;
+            btnSubmit.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Stock Insuficiente';
+            btnSubmit.className = 'btn btn-danger';
+        } else {
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = '<i class="fas fa-save"></i> Registrar Consumo';
+            btnSubmit.className = 'btn btn-primary';
+        }
+    } else {
+        document.getElementById('subtotal-display').value = '$0.00';
+    }
+}
+
+// Validar al enviar el formulario
+document.querySelector('form').addEventListener('submit', function(e) {
+    const select = document.getElementById('producto_id');
+    const cantidad = parseInt(document.getElementById('cantidad').value) || 0;
+    
+    if (!select.value) {
+        e.preventDefault();
+        alert('Por favor seleccione un producto');
+        return;
+    }
+    
+    if (cantidad <= 0) {
+        e.preventDefault();
+        alert('La cantidad debe ser mayor a cero');
+        return;
+    }
+    
+    const selectedOption = select.options[select.selectedIndex];
+    const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
+    
+    if (cantidad > stock) {
+        e.preventDefault();
+        alert('La cantidad no puede ser mayor al stock disponible (' + stock + ' unidades)');
+        return;
+    }
+});
+</script>
+{% endblock %}

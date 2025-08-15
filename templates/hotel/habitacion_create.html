@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+
+{% block title %}Nueva Habitación - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-plus-circle"></i> Nueva Habitación</h1>
+        <p class="mb-0">Agregar una nueva habitación al hotel</p>
+    </div>
+    <div>
+        <a href="{% url 'hotel:habitaciones' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Volver a Habitaciones
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bed"></i> Información de la Habitación</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="numero" class="form-label">Número de Habitación <span class="text-danger">*</span></label>
+                            <input type="text" name="numero" id="numero" class="form-control" 
+                                   placeholder="Ej: 101, 205, A-12" required>
+                            <small class="text-muted">Debe ser único en el hotel</small>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="piso" class="form-label">Piso <span class="text-danger">*</span></label>
+                            <select name="piso" id="piso" class="form-select" required>
+                                <option value="">Seleccionar piso...</option>
+                                {% for piso in pisos_disponibles %}
+                                <option value="{{ piso }}">Piso {{ piso }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="tipo_id" class="form-label">Tipo de Habitación <span class="text-danger">*</span></label>
+                        <select name="tipo_id" id="tipo_id" class="form-select" required onchange="actualizarInfoTipo()">
+                            <option value="">Seleccionar tipo...</option>
+                            {% for tipo in tipos_habitacion %}
+                            <option value="{{ tipo.id }}" 
+                                    data-precio="{{ tipo.precio_por_noche }}" 
+                                    data-capacidad="{{ tipo.capacidad_personas }}"
+                                    data-descripcion="{{ tipo.descripcion }}">
+                                {{ tipo.nombre }} - ${{ tipo.precio_por_noche }}/noche
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <!-- Información del tipo seleccionado -->
+                    <div id="info-tipo" class="alert alert-info" style="display: none;">
+                        <h6><i class="fas fa-info-circle"></i> Información del Tipo</h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <strong>Precio por noche:</strong><br>
+                                <span id="precio-tipo">-</span>
+                            </div>
+                            <div class="col-md-4">
+                                <strong>Capacidad:</strong><br>
+                                <span id="capacidad-tipo">-</span>
+                            </div>
+                            <div class="col-md-4">
+                                <strong>Descripción:</strong><br>
+                                <span id="descripcion-tipo">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="descripcion" class="form-label">Descripción</label>
+                        <textarea name="descripcion" id="descripcion" class="form-control" rows="3" 
+                                  placeholder="Características especiales de la habitación..."></textarea>
+                        <small class="text-muted">Opcional - Detalles adicionales sobre la habitación</small>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'hotel:habitaciones' %}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Crear Habitación
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-info-circle"></i> Instrucciones</h6>
+            </div>
+            <div class="card-body">
+                <ol class="mb-3">
+                    <li>Ingrese un número único para la habitación</li>
+                    <li>Seleccione el piso donde se encuentra</li>
+                    <li>Elija el tipo de habitación</li>
+                    <li>Agregue una descripción opcional</li>
+                    <li>Haga clic en "Crear Habitación"</li>
+                </ol>
+                
+                <h6><i class="fas fa-lightbulb text-warning"></i> Consejos:</h6>
+                <ul class="small mb-0">
+                    <li>Use números consecutivos por piso (101, 102, 103...)</li>
+                    <li>El estado inicial será "Disponible"</li>
+                    <li>Puede cambiar el estado después de crear</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-list"></i> Tipos Disponibles</h6>
+            </div>
+            <div class="card-body">
+                {% for tipo in tipos_habitacion %}
+                <div class="border rounded p-2 mb-2">
+                    <strong>{{ tipo.nombre }}</strong><br>
+                    <small class="text-muted">
+                        ${{ tipo.precio_por_noche }}/noche - {{ tipo.capacidad_personas }} personas
+                    </small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function actualizarInfoTipo() {
+    const select = document.getElementById('tipo_id');
+    const selectedOption = select.options[select.selectedIndex];
+    const infoDiv = document.getElementById('info-tipo');
+    
+    if (selectedOption.value) {
+        const precio = selectedOption.getAttribute('data-precio');
+        const capacidad = selectedOption.getAttribute('data-capacidad');
+        const descripcion = selectedOption.getAttribute('data-descripcion');
+        
+        document.getElementById('precio-tipo').textContent = '$' + parseFloat(precio).toFixed(2);
+        document.getElementById('capacidad-tipo').textContent = capacidad + ' personas';
+        document.getElementById('descripcion-tipo').textContent = descripcion || 'Sin descripción';
+        
+        infoDiv.style.display = 'block';
+    } else {
+        infoDiv.style.display = 'none';
+    }
+}
+
+// Validación del formulario
+document.querySelector('form').addEventListener('submit', function(e) {
+    const numero = document.getElementById('numero').value.trim();
+    const tipo = document.getElementById('tipo_id').value;
+    const piso = document.getElementById('piso').value;
+    
+    if (!numero || !tipo || !piso) {
+        e.preventDefault();
+        alert('Por favor complete todos los campos obligatorios');
+        return;
+    }
+    
+    if (numero.length < 1) {
+        e.preventDefault();
+        alert('El número de habitación no puede estar vacío');
+        return;
+    }
+});
+</script>
+{% endblock %}

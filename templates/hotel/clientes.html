@@ -1,0 +1,277 @@
+{% extends 'base.html' %}
+
+{% block title %}Clientes - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-users"></i> Gestión de Clientes</h1>
+        <p class="mb-0">Administre la información de todos los clientes</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoCliente">
+        <i class="fas fa-user-plus"></i> Nuevo Cliente
+    </button>
+</div>
+
+<!-- Búsqueda -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-8">
+                <input type="text" name="q" class="form-control" placeholder="Buscar por nombre, documento o email..." value="{{ query }}">
+            </div>
+            <div class="col-md-4">
+                <div class="d-flex">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                    <a href="{% url 'hotel:clientes' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times"></i> Limpiar
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Lista de clientes -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-list"></i> Lista de Clientes ({{ clientes.paginator.count }} total)</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Nombre Completo</th>
+                        <th>Documento</th>
+                        <th>Contacto</th>
+                        <th>Fecha de Registro</th>
+                        <th>Reservas</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cliente in clientes %}
+                    <tr>
+                        <td>
+                            <div>
+                                <strong>{{ cliente.nombre_completo }}</strong>
+                                {% if cliente.fecha_nacimiento %}
+                                <br><small class="text-muted">{{ cliente.fecha_nacimiento|date:"d/m/Y" }}</small>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-info">{{ cliente.get_tipo_documento_display }}</span><br>
+                            <strong>{{ cliente.numero_documento }}</strong>
+                        </td>
+                        <td>
+                            {% if cliente.telefono %}
+                                <i class="fas fa-phone text-success"></i> {{ cliente.telefono }}<br>
+                            {% endif %}
+                            {% if cliente.email %}
+                                <i class="fas fa-envelope text-primary"></i> {{ cliente.email }}
+                            {% endif %}
+                            {% if not cliente.telefono and not cliente.email %}
+                                <span class="text-muted">Sin contacto</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ cliente.fecha_registro|date:"d/m/Y" }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary">{{ cliente.reserva_set.count }}</span>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="verCliente({{ cliente.id }})" title="Ver detalle">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-outline-success" onclick="nuevaReservaCliente({{ cliente.id }})" title="Nueva reserva">
+                                    <i class="fas fa-calendar-plus"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="editarCliente({{ cliente.id }})" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4">
+                            <i class="fas fa-user-times fa-2x text-muted mb-2"></i><br>
+                            {% if query %}
+                                No se encontraron clientes que coincidan con "{{ query }}".
+                            {% else %}
+                                No hay clientes registrados aún.
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Paginación -->
+{% if clientes.has_other_pages %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if clientes.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page=1{% if query %}&q={{ query }}{% endif %}">Primera</a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="?page={{ clientes.previous_page_number }}{% if query %}&q={{ query }}{% endif %}">Anterior</a>
+        </li>
+        {% endif %}
+        
+        <li class="page-item active">
+            <span class="page-link">{{ clientes.number }} de {{ clientes.paginator.num_pages }}</span>
+        </li>
+        
+        {% if clientes.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ clientes.next_page_number }}{% if query %}&q={{ query }}{% endif %}">Siguiente</a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="?page={{ clientes.paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}">Última</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+<!-- Modal Nuevo Cliente -->
+<div class="modal fade" id="modalNuevoCliente" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-user-plus"></i> Nuevo Cliente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formNuevoCliente">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="nombre" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Apellido <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="apellido" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipo de Documento <span class="text-danger">*</span></label>
+                            <select class="form-select" id="tipo_documento" required>
+                                <option value="">Seleccionar...</option>
+                                <option value="cedula">Cédula</option>
+                                <option value="pasaporte">Pasaporte</option>
+                                <option value="tarjeta_identidad">Tarjeta de Identidad</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Número de Documento <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="numero_documento" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Teléfono</label>
+                            <input type="tel" class="form-control" id="telefono">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha de Nacimiento</label>
+                            <input type="date" class="form-control" id="fecha_nacimiento">
+                        </div>
+                        <div class="col-md-6"></div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Dirección</label>
+                            <textarea class="form-control" id="direccion" rows="3"></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="guardarCliente()">Guardar Cliente</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function verCliente(clienteId) {
+    // En una implementación completa, mostrarías un modal con el detalle del cliente
+    // y su historial de reservas
+    window.location.href = `/admin/hotel/cliente/${clienteId}/change/`;
+}
+
+function nuevaReservaCliente(clienteId) {
+    // Redirigir a nueva reserva con el cliente preseleccionado
+    sessionStorage.setItem('cliente_preseleccionado', clienteId);
+    window.location.href = '{% url "hotel:reservas" %}';
+}
+
+function editarCliente(clienteId) {
+    // En una implementación completa, cargarías los datos del cliente en el modal
+    $('#modalNuevoCliente').modal('show');
+    // Aquí cargarías los datos del cliente para edición
+}
+
+function guardarCliente() {
+    const data = {
+        nombre: $('#nombre').val(),
+        apellido: $('#apellido').val(),
+        tipo_documento: $('#tipo_documento').val(),
+        numero_documento: $('#numero_documento').val(),
+        telefono: $('#telefono').val(),
+        email: $('#email').val(),
+        fecha_nacimiento: $('#fecha_nacimiento').val(),
+        direccion: $('#direccion').val()
+    };
+
+    // Validación básica
+    if (!data.nombre || !data.apellido || !data.tipo_documento || !data.numero_documento) {
+        showNotification('warning', 'Datos incompletos', 'Por favor complete todos los campos obligatorios');
+        return;
+    }
+
+    showLoading();
+    $.post('{% url "hotel:cliente_create" %}', JSON.stringify(data), 'json')
+    .done(function(response) {
+        if (response.success) {
+            showNotification('success', 'Éxito', 'Cliente registrado correctamente');
+            $('#modalNuevoCliente').modal('hide');
+            location.reload();
+        } else {
+            showNotification('error', 'Error', response.error || 'Error al registrar el cliente');
+        }
+    })
+    .fail(function() {
+        showNotification('error', 'Error', 'Error de conexión');
+    })
+    .always(function() {
+        hideLoading();
+    });
+}
+
+// Limpiar formulario al cerrar modal
+$('#modalNuevoCliente').on('hidden.bs.modal', function() {
+    $('#formNuevoCliente')[0].reset();
+});
+
+// Búsqueda con Enter
+$('input[name="q"]').on('keypress', function(e) {
+    if (e.which === 13) {
+        $(this).closest('form').submit();
+    }
+});
+</script>
+{% endblock %}

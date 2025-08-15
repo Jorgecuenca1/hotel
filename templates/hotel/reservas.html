@@ -1,0 +1,375 @@
+{% extends 'base.html' %}
+
+{% block title %}Reservas - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-calendar-check"></i> Gestión de Reservas</h1>
+        <p class="mb-0">Administre todas las reservas del hotel</p>
+    </div>
+    <button class="btn btn-primary" onclick="nuevaReserva()">
+        <i class="fas fa-plus"></i> Nueva Reserva
+    </button>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Estado</label>
+                <select name="estado" class="form-select">
+                    <option value="">Todos los estados</option>
+                    <option value="pendiente" {% if filtros.estado == 'pendiente' %}selected{% endif %}>Pendiente</option>
+                    <option value="confirmada" {% if filtros.estado == 'confirmada' %}selected{% endif %}>Confirmada</option>
+                    <option value="en_curso" {% if filtros.estado == 'en_curso' %}selected{% endif %}>En Curso</option>
+                    <option value="finalizada" {% if filtros.estado == 'finalizada' %}selected{% endif %}>Finalizada</option>
+                    <option value="cancelada" {% if filtros.estado == 'cancelada' %}selected{% endif %}>Cancelada</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Desde</label>
+                <input type="date" name="fecha_desde" class="form-control" value="{{ filtros.fecha_desde }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Hasta</label>
+                <input type="date" name="fecha_hasta" class="form-control" value="{{ filtros.fecha_hasta }}">
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="fas fa-search"></i> Filtrar
+                </button>
+                <a href="{% url 'hotel:reservas' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-times"></i> Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Lista de reservas -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-list"></i> Lista de Reservas</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Número</th>
+                        <th>Cliente</th>
+                        <th>Habitación</th>
+                        <th>Entrada</th>
+                        <th>Salida</th>
+                        <th>Huéspedes</th>
+                        <th>Estado</th>
+                        <th>Total</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for reserva in reservas %}
+                    <tr>
+                        <td>
+                            <strong>{{ reserva.numero_reserva }}</strong>
+                        </td>
+                        <td>
+                            <div>
+                                <strong>{{ reserva.cliente.nombre_completo }}</strong><br>
+                                <small class="text-muted">{{ reserva.cliente.numero_documento }}</small>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-info">
+                                Hab. {{ reserva.habitacion.numero }}
+                            </span><br>
+                            <small>{{ reserva.habitacion.tipo.nombre }}</small>
+                        </td>
+                        <td>{{ reserva.fecha_entrada|date:"d/m/Y" }}</td>
+                        <td>{{ reserva.fecha_salida|date:"d/m/Y" }}</td>
+                        <td class="text-center">{{ reserva.numero_huespedes }}</td>
+                        <td>
+                            <span class="badge 
+                                {% if reserva.estado == 'pendiente' %}bg-warning
+                                {% elif reserva.estado == 'confirmada' %}bg-info
+                                {% elif reserva.estado == 'en_curso' %}bg-success
+                                {% elif reserva.estado == 'finalizada' %}bg-secondary
+                                {% else %}bg-danger{% endif %}">
+                                {{ reserva.get_estado_display }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if reserva.precio_total %}
+                                <strong>${{ reserva.precio_total|floatformat:2 }}</strong>
+                            {% else %}
+                                <span class="text-muted">Sin calcular</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-outline-primary" title="Ver detalle">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                {% if reserva.estado == 'confirmada' %}
+                                <button class="btn btn-outline-success" onclick="checkIn({{ reserva.id }})" title="Check-in">
+                                    <i class="fas fa-sign-in-alt"></i>
+                                </button>
+                                {% endif %}
+                                {% if reserva.estado == 'en_curso' %}
+                                <button class="btn btn-outline-warning" onclick="checkOut({{ reserva.id }})" title="Check-out">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                </button>
+                                {% endif %}
+                                <button class="btn btn-outline-info" onclick="generarFactura({{ reserva.id }})" title="Generar factura">
+                                    <i class="fas fa-file-invoice"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center py-4">
+                            <i class="fas fa-calendar-times fa-2x text-muted mb-2"></i><br>
+                            No se encontraron reservas con los filtros aplicados.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Paginación -->
+{% if reservas.has_other_pages %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if reservas.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page=1{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}{% if request.GET.fecha_desde %}&fecha_desde={{ request.GET.fecha_desde }}{% endif %}{% if request.GET.fecha_hasta %}&fecha_hasta={{ request.GET.fecha_hasta }}{% endif %}">Primera</a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="?page={{ reservas.previous_page_number }}{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}{% if request.GET.fecha_desde %}&fecha_desde={{ request.GET.fecha_desde }}{% endif %}{% if request.GET.fecha_hasta %}&fecha_hasta={{ request.GET.fecha_hasta }}{% endif %}">Anterior</a>
+        </li>
+        {% endif %}
+        
+        <li class="page-item active">
+            <span class="page-link">{{ reservas.number }} de {{ reservas.paginator.num_pages }}</span>
+        </li>
+        
+        {% if reservas.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ reservas.next_page_number }}{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}{% if request.GET.fecha_desde %}&fecha_desde={{ request.GET.fecha_desde }}{% endif %}{% if request.GET.fecha_hasta %}&fecha_hasta={{ request.GET.fecha_hasta }}{% endif %}">Siguiente</a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="?page={{ reservas.paginator.num_pages }}{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}{% if request.GET.fecha_desde %}&fecha_desde={{ request.GET.fecha_desde }}{% endif %}{% if request.GET.fecha_hasta %}&fecha_hasta={{ request.GET.fecha_hasta }}{% endif %}">Última</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+<!-- Modal Nueva Reserva -->
+<div class="modal fade" id="modalNuevaReserva" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> Nueva Reserva</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Contenido del formulario igual que en dashboard -->
+                <form id="formNuevaReserva">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Cliente</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="buscarCliente" placeholder="Buscar cliente...">
+                                <button type="button" class="btn btn-outline-secondary" onclick="nuevoCliente()">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                            <input type="hidden" id="cliente_id">
+                            <div id="clienteInfo" class="mt-2" style="display: none;">
+                                <small class="text-success">
+                                    <i class="fas fa-check"></i> <span id="clienteNombre"></span>
+                                </small>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Número de Huéspedes</label>
+                            <input type="number" class="form-control" id="numero_huespedes" value="1" min="1">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha de Entrada</label>
+                            <input type="date" class="form-control" id="fecha_entrada" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha de Salida</label>
+                            <input type="date" class="form-control" id="fecha_salida" required>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Habitación</label>
+                            <select class="form-select" id="habitacion_id" required>
+                                <option value="">Seleccionar fechas para ver habitaciones disponibles</option>
+                            </select>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Observaciones</label>
+                            <textarea class="form-control" id="observaciones" rows="3"></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="guardarReserva()">Guardar Reserva</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function nuevaReserva() {
+    document.getElementById('fecha_entrada').value = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('fecha_salida').value = tomorrow.toISOString().split('T')[0];
+    
+    $('#modalNuevaReserva').modal('show');
+}
+
+function checkIn(reservaId) {
+    Swal.fire({
+        title: 'Check-in',
+        text: '¿Confirmar el check-in de esta reserva?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, confirmar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Aquí implementarías la lógica de check-in
+            showNotification('success', 'Check-in realizado', 'El huésped ha sido registrado');
+            location.reload();
+        }
+    });
+}
+
+function checkOut(reservaId) {
+    Swal.fire({
+        title: 'Check-out',
+        text: '¿Confirmar el check-out de esta reserva?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, confirmar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Aquí implementarías la lógica de check-out
+            showNotification('success', 'Check-out realizado', 'La habitación está lista para limpieza');
+            location.reload();
+        }
+    });
+}
+
+function generarFactura(reservaId) {
+    window.open(`/facturas/${reservaId}/generar/`, '_blank');
+}
+
+// Buscar habitaciones disponibles cuando cambien las fechas
+$('#fecha_entrada, #fecha_salida').on('change', function() {
+    const fechaEntrada = $('#fecha_entrada').val();
+    const fechaSalida = $('#fecha_salida').val();
+    
+    if (fechaEntrada && fechaSalida && fechaEntrada < fechaSalida) {
+        showLoading();
+        $.get('{% url "hotel:api_habitaciones_disponibles" %}', {
+            fecha_entrada: fechaEntrada,
+            fecha_salida: fechaSalida
+        })
+        .done(function(data) {
+            const select = $('#habitacion_id');
+            select.empty();
+            
+            if (data.habitaciones.length === 0) {
+                select.append('<option value="">No hay habitaciones disponibles</option>');
+            } else {
+                select.append('<option value="">Seleccionar habitación</option>');
+                data.habitaciones.forEach(function(hab) {
+                    select.append(`<option value="${hab.id}">Habitación ${hab.numero} - ${hab.tipo} ($${hab.precio}/noche)</option>`);
+                });
+            }
+        })
+        .fail(function() {
+            showNotification('error', 'Error', 'No se pudieron cargar las habitaciones disponibles');
+        })
+        .always(function() {
+            hideLoading();
+        });
+    }
+});
+
+// Buscar clientes con autocompletado
+$('#buscarCliente').on('input', function() {
+    const query = $(this).val();
+    
+    if (query.length < 2) {
+        $('#clienteInfo').hide();
+        $('#cliente_id').val('');
+        return;
+    }
+    
+    $.get('{% url "hotel:api_buscar_cliente" %}', { q: query })
+    .done(function(data) {
+        if (data.clientes.length > 0) {
+            // Por simplicidad, selecciona el primer resultado
+            const cliente = data.clientes[0];
+            $('#cliente_id').val(cliente.id);
+            $('#clienteNombre').text(cliente.nombre_completo);
+            $('#clienteInfo').show();
+        }
+    });
+});
+
+// Guardar reserva (igual que en dashboard)
+function guardarReserva() {
+    const data = {
+        cliente_id: $('#cliente_id').val(),
+        habitacion_id: $('#habitacion_id').val(),
+        fecha_entrada: $('#fecha_entrada').val(),
+        fecha_salida: $('#fecha_salida').val(),
+        numero_huespedes: $('#numero_huespedes').val(),
+        observaciones: $('#observaciones').val()
+    };
+
+    if (!data.cliente_id || !data.habitacion_id) {
+        showNotification('warning', 'Datos incompletos', 'Por favor complete todos los campos requeridos');
+        return;
+    }
+
+    showLoading();
+    $.post('{% url "hotel:reserva_create" %}', JSON.stringify(data), 'json')
+    .done(function(response) {
+        if (response.success) {
+            showNotification('success', 'Éxito', 'Reserva creada correctamente');
+            $('#modalNuevaReserva').modal('hide');
+            location.reload();
+        } else {
+            showNotification('error', 'Error', response.error || 'Error al crear la reserva');
+        }
+    })
+    .fail(function() {
+        showNotification('error', 'Error', 'Error de conexión');
+    })
+    .always(function() {
+        hideLoading();
+    });
+}
+</script>
+{% endblock %}

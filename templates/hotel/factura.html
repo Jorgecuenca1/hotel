@@ -1,0 +1,236 @@
+{% extends 'base.html' %}
+
+{% block title %}Factura {{ factura.numero_factura }} - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-file-invoice"></i> Factura {{ factura.numero_factura }}</h1>
+        <p class="mb-0">Factura generada el {{ factura.fecha_emision|date:"d/m/Y H:i" }}</p>
+    </div>
+    <div>
+        <a href="{% url 'hotel:factura_pdf' factura.id %}" class="btn btn-success" target="_blank">
+            <i class="fas fa-download"></i> Descargar PDF
+        </a>
+        <button class="btn btn-primary" onclick="window.print()">
+            <i class="fas fa-print"></i> Imprimir
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <!-- Encabezado de la factura -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h3 class="text-primary">
+                    <i class="fas fa-hotel"></i> Hotel Manager
+                </h3>
+                <p class="mb-1">Calle Principal #123</p>
+                <p class="mb-1">Ciudad, Estado 12345</p>
+                <p class="mb-1">Tel: (555) 123-4567</p>
+                <p class="mb-0">Email: info@hotelmanager.com</p>
+            </div>
+            <div class="col-md-6 text-end">
+                <h2 class="text-primary">FACTURA</h2>
+                <table class="table table-borderless table-sm">
+                    <tr>
+                        <td class="text-end"><strong>Número:</strong></td>
+                        <td>{{ factura.numero_factura }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-end"><strong>Fecha:</strong></td>
+                        <td>{{ factura.fecha_emision|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-end"><strong>Reserva:</strong></td>
+                        <td>{{ factura.reserva.numero_reserva }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <hr>
+
+        <!-- Información del cliente -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h5><i class="fas fa-user"></i> Datos del Cliente</h5>
+                <p class="mb-1"><strong>{{ factura.reserva.cliente.nombre_completo }}</strong></p>
+                <p class="mb-1">{{ factura.reserva.cliente.get_tipo_documento_display }}: {{ factura.reserva.cliente.numero_documento }}</p>
+                {% if factura.reserva.cliente.telefono %}
+                <p class="mb-1">Tel: {{ factura.reserva.cliente.telefono }}</p>
+                {% endif %}
+                {% if factura.reserva.cliente.email %}
+                <p class="mb-1">Email: {{ factura.reserva.cliente.email }}</p>
+                {% endif %}
+                {% if factura.reserva.cliente.direccion %}
+                <p class="mb-0">{{ factura.reserva.cliente.direccion }}</p>
+                {% endif %}
+            </div>
+            <div class="col-md-6">
+                <h5><i class="fas fa-bed"></i> Información de la Estancia</h5>
+                <p class="mb-1"><strong>Habitación:</strong> {{ factura.reserva.habitacion.numero }} - {{ factura.reserva.habitacion.tipo.nombre }}</p>
+                <p class="mb-1"><strong>Entrada:</strong> {{ factura.reserva.fecha_entrada|date:"d/m/Y" }}</p>
+                <p class="mb-1"><strong>Salida:</strong> {{ factura.reserva.fecha_salida|date:"d/m/Y" }}</p>
+                <p class="mb-1"><strong>Noches:</strong> {{ factura.reserva.dias_estancia }}</p>
+                <p class="mb-0"><strong>Huéspedes:</strong> {{ factura.reserva.numero_huespedes }}</p>
+            </div>
+        </div>
+
+        <!-- Detalle de servicios -->
+        <h5><i class="fas fa-list"></i> Detalle de Servicios</h5>
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Concepto</th>
+                        <th class="text-center">Cantidad</th>
+                        <th class="text-end">Precio Unitario</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Servicios de habitación -->
+                    <tr>
+                        <td>
+                            <strong>Hospedaje - {{ factura.reserva.habitacion.tipo.nombre }}</strong><br>
+                            <small class="text-muted">Del {{ factura.reserva.fecha_entrada|date:"d/m/Y" }} al {{ factura.reserva.fecha_salida|date:"d/m/Y" }}</small>
+                        </td>
+                        <td class="text-center">{{ factura.reserva.dias_estancia }} noche(s)</td>
+                        <td class="text-end">${{ factura.reserva.habitacion.tipo.precio_por_noche|floatformat:2 }}</td>
+                        <td class="text-end">${{ factura.subtotal_habitacion|floatformat:2 }}</td>
+                    </tr>
+
+                    <!-- Consumos adicionales -->
+                    {% for consumo in factura.reserva.consumohabitacion_set.all %}
+                    <tr>
+                        <td>
+                            <strong>{{ consumo.producto.nombre }}</strong><br>
+                            <small class="text-muted">{{ consumo.fecha_consumo|date:"d/m/Y H:i" }}</small>
+                        </td>
+                        <td class="text-center">{{ consumo.cantidad }}</td>
+                        <td class="text-end">${{ consumo.precio_unitario|floatformat:2 }}</td>
+                        <td class="text-end">${{ consumo.subtotal|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Totales -->
+        <div class="row">
+            <div class="col-md-6"></div>
+            <div class="col-md-6">
+                <table class="table table-borderless">
+                    <tr>
+                        <td class="text-end"><strong>Subtotal Habitación:</strong></td>
+                        <td class="text-end">${{ factura.subtotal_habitacion|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-end"><strong>Subtotal Consumos:</strong></td>
+                        <td class="text-end">${{ factura.subtotal_consumos|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-end"><strong>Subtotal:</strong></td>
+                        <td class="text-end">${{ factura.subtotal_habitacion|add:factura.subtotal_consumos|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-end"><strong>IVA (16%):</strong></td>
+                        <td class="text-end">${{ factura.impuestos|floatformat:2 }}</td>
+                    </tr>
+                    <tr class="table-primary">
+                        <td class="text-end"><strong>TOTAL:</strong></td>
+                        <td class="text-end"><strong>${{ factura.total|floatformat:2 }}</strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Información de pagos -->
+        {% if factura.reserva.pago_set.all %}
+        <hr>
+        <h5><i class="fas fa-credit-card"></i> Historial de Pagos</h5>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Número de Pago</th>
+                        <th>Método</th>
+                        <th>Tipo</th>
+                        <th class="text-end">Monto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pago in factura.reserva.pago_set.all %}
+                    <tr>
+                        <td>{{ pago.fecha_pago|date:"d/m/Y H:i" }}</td>
+                        <td>{{ pago.numero_pago }}</td>
+                        <td>{{ pago.get_metodo_pago_display }}</td>
+                        <td>{{ pago.get_tipo_pago_display }}</td>
+                        <td class="text-end">${{ pago.monto|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-success">
+                        <td colspan="4" class="text-end"><strong>Total Pagado:</strong></td>
+                        <td class="text-end"><strong>${{ total_pagado|floatformat:2 }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Observaciones -->
+        {% if factura.observaciones %}
+        <hr>
+        <h5><i class="fas fa-sticky-note"></i> Observaciones</h5>
+        <p>{{ factura.observaciones }}</p>
+        {% endif %}
+
+        <!-- Pie de factura -->
+        <hr>
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <p class="small text-muted">
+                    <strong>Términos y Condiciones:</strong><br>
+                    • El check-out debe realizarse antes de las 12:00 PM<br>
+                    • Los consumos adicionales están sujetos a disponibilidad<br>
+                    • Esta factura es válida como comprobante fiscal
+                </p>
+            </div>
+            <div class="col-md-6 text-end">
+                <p class="small text-muted">
+                    Factura generada electrónicamente<br>
+                    {{ factura.fecha_emision|date:"d/m/Y H:i" }}<br>
+                    Usuario: {{ factura.usuario_emision.username|default:"Sistema" }}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@media print {
+    .page-header,
+    .sidebar,
+    .btn {
+        display: none !important;
+    }
+    
+    .main-content {
+        margin-left: 0 !important;
+    }
+    
+    .card {
+        border: none !important;
+        box-shadow: none !important;
+    }
+}
+</style>
+{% endblock %}

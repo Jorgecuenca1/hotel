@@ -1,0 +1,246 @@
+{% extends 'base.html' %}
+
+{% block title %}Tipos de Habitación - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-layer-group"></i> Tipos de Habitación</h1>
+        <p class="mb-0">Gestione los diferentes tipos de habitaciones del hotel</p>
+    </div>
+    <div>
+        <a href="{% url 'hotel:tipo_habitacion_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Nuevo Tipo
+        </a>
+    </div>
+</div>
+
+<!-- Resumen estadístico -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-1">{{ tipos_habitacion|length }}</h3>
+                <p class="mb-0">Total Tipos</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-1" id="precio-promedio">$0</h3>
+                <p class="mb-0">Precio Promedio</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-1" id="capacidad-total">0</h3>
+                <p class="mb-0">Capacidad Total</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-1" id="habitaciones-total">0</h3>
+                <p class="mb-0">Habitaciones</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Lista de tipos -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-list"></i> Lista de Tipos de Habitación</h5>
+    </div>
+    <div class="card-body">
+        {% if tipos_habitacion %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Descripción</th>
+                        <th>Precio por Noche</th>
+                        <th>Capacidad</th>
+                        <th>Habitaciones</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tipo in tipos_habitacion %}
+                    <tr>
+                        <td>
+                            <strong>{{ tipo.nombre }}</strong>
+                        </td>
+                        <td>
+                            {% if tipo.descripcion %}
+                                {{ tipo.descripcion|truncatewords:15 }}
+                            {% else %}
+                                <span class="text-muted">Sin descripción</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-success fs-6">${{ tipo.precio_por_noche|floatformat:2 }}</span>
+                        </td>
+                        <td>
+                            <i class="fas fa-users text-info"></i> {{ tipo.capacidad_personas }} persona{{ tipo.capacidad_personas|pluralize }}
+                        </td>
+                        <td>
+                            <span class="badge bg-info" data-tipo-habitaciones="{{ tipo.habitacion_set.count }}">
+                                {{ tipo.habitacion_set.count }} habitación{{ tipo.habitacion_set.count|pluralize:"es" }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="{% url 'hotel:tipo_habitacion_edit' tipo.id %}" 
+                                   class="btn btn-sm btn-outline-warning" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{% url 'hotel:tipo_habitacion_delete' tipo.id %}" 
+                                   class="btn btn-sm btn-outline-danger" title="Eliminar">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-layer-group fa-3x text-muted mb-3"></i>
+            <h4 class="text-muted">No hay tipos de habitación registrados</h4>
+            <p class="text-muted mb-4">Comience creando su primer tipo de habitación</p>
+            <a href="{% url 'hotel:tipo_habitacion_create' %}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Crear Primer Tipo
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Información adicional -->
+{% if tipos_habitacion %}
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Estadísticas por Tipo</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <strong>Más Caro:</strong><br>
+                        <span id="tipo-mas-caro">-</span>
+                    </div>
+                    <div class="col-6">
+                        <strong>Más Económico:</strong><br>
+                        <span id="tipo-mas-economico">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-info-circle"></i> Información</h6>
+            </div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li>Los tipos definen las características básicas de las habitaciones</li>
+                    <li>El precio y capacidad se heredan a todas las habitaciones del tipo</li>
+                    <li>No puede eliminar tipos que tengan habitaciones asociadas</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Calcular estadísticas
+document.addEventListener('DOMContentLoaded', function() {
+    calcularEstadisticas();
+});
+
+function calcularEstadisticas() {
+    const filas = document.querySelectorAll('tbody tr');
+    
+    if (filas.length === 0) return;
+    
+    let totalPrecios = 0;
+    let totalCapacidad = 0;
+    let totalHabitaciones = 0;
+    let precioMaximo = 0;
+    let precioMinimo = Infinity;
+    let tipoMasCaro = '';
+    let tipoMasEconomico = '';
+    
+    filas.forEach(fila => {
+        // Extraer datos de la fila
+        const nombre = fila.querySelector('td:first-child strong').textContent;
+        const precioText = fila.querySelector('.badge.bg-success').textContent.replace('$', '').replace(',', '');
+        const precio = parseFloat(precioText);
+        const capacidadText = fila.querySelector('td:nth-child(4)').textContent.match(/\d+/);
+        const capacidad = capacidadText ? parseInt(capacidadText[0]) : 0;
+        const habitacionesElement = fila.querySelector('[data-tipo-habitaciones]');
+        const habitaciones = parseInt(habitacionesElement.getAttribute('data-tipo-habitaciones'));
+        
+        totalPrecios += precio;
+        totalCapacidad += capacidad;
+        totalHabitaciones += habitaciones;
+        
+        if (precio > precioMaximo) {
+            precioMaximo = precio;
+            tipoMasCaro = nombre;
+        }
+        
+        if (precio < precioMinimo) {
+            precioMinimo = precio;
+            tipoMasEconomico = nombre;
+        }
+    });
+    
+    // Actualizar estadísticas
+    const precioPromedio = totalPrecios / filas.length;
+    document.getElementById('precio-promedio').textContent = '$' + precioPromedio.toFixed(2);
+    document.getElementById('capacidad-total').textContent = totalCapacidad;
+    document.getElementById('habitaciones-total').textContent = totalHabitaciones;
+    
+    // Actualizar tipos más caro y económico
+    const tipoMasCaroElement = document.getElementById('tipo-mas-caro');
+    const tipoMasEconomicoElement = document.getElementById('tipo-mas-economico');
+    
+    if (tipoMasCaroElement) {
+        tipoMasCaroElement.textContent = tipoMasCaro + ' ($' + precioMaximo.toFixed(2) + ')';
+    }
+    
+    if (tipoMasEconomicoElement) {
+        tipoMasEconomicoElement.textContent = tipoMasEconomico + ' ($' + precioMinimo.toFixed(2) + ')';
+    }
+}
+
+// Animaciones para las tarjetas
+document.querySelectorAll('tr').forEach(function(row) {
+    row.addEventListener('mouseenter', function() {
+        this.style.backgroundColor = '#f8f9fa';
+        this.style.transform = 'scale(1.01)';
+        this.style.transition = 'all 0.2s ease';
+    });
+    
+    row.addEventListener('mouseleave', function() {
+        this.style.backgroundColor = '';
+        this.style.transform = 'scale(1)';
+    });
+});
+</script>
+{% endblock %}

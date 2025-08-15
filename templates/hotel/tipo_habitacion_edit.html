@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+
+{% block title %}Editar {{ tipo_habitacion.nombre }} - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-edit"></i> Editar Tipo: {{ tipo_habitacion.nombre }}</h1>
+        <p class="mb-0">Modificar información del tipo de habitación</p>
+    </div>
+    <div>
+        <a href="{% url 'hotel:tipos_habitacion' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Volver a Tipos
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-layer-group"></i> Información del Tipo</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" id="tipoForm">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label">Nombre del Tipo <span class="text-danger">*</span></label>
+                        <input type="text" name="nombre" id="nombre" class="form-control" 
+                               value="{{ tipo_habitacion.nombre }}" placeholder="Ej: Individual, Doble, Suite" required>
+                        <small class="text-muted">Debe ser único en el hotel</small>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="precio_por_noche" class="form-label">Precio por Noche <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" name="precio_por_noche" id="precio_por_noche" 
+                                       class="form-control" step="0.01" min="0" 
+                                       value="{{ tipo_habitacion.precio_por_noche }}" required>
+                            </div>
+                            <small class="text-muted">Precio base por noche</small>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="capacidad_personas" class="form-label">Capacidad <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" name="capacidad_personas" id="capacidad_personas" 
+                                       class="form-control" min="1" max="20" 
+                                       value="{{ tipo_habitacion.capacidad_personas }}" required>
+                                <span class="input-group-text">persona(s)</span>
+                            </div>
+                            <small class="text-muted">Número máximo de huéspedes</small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="descripcion" class="form-label">Descripción</label>
+                        <textarea name="descripcion" id="descripcion" class="form-control" rows="4" 
+                                  placeholder="Describe las características, amenidades y servicios incluidos...">{{ tipo_habitacion.descripcion }}</textarea>
+                        <small class="text-muted">Opcional - Descripción detallada del tipo de habitación</small>
+                    </div>
+                    
+                    <!-- Vista previa -->
+                    <div class="card bg-light">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-eye"></i> Vista Previa</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <strong>Tipo:</strong> <span id="preview-nombre">{{ tipo_habitacion.nombre }}</span><br>
+                                    <strong>Precio:</strong> <span id="preview-precio">${{ tipo_habitacion.precio_por_noche|floatformat:2 }}</span>/noche<br>
+                                    <strong>Capacidad:</strong> <span id="preview-capacidad">{{ tipo_habitacion.capacidad_personas }}</span> persona(s)
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Descripción:</strong><br>
+                                    <span id="preview-descripcion">{% if tipo_habitacion.descripcion %}{{ tipo_habitacion.descripcion }}{% else %}Sin descripción{% endif %}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'hotel:tipos_habitacion' %}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-warning" id="submitBtn">
+                            <i class="fas fa-save"></i> Guardar Cambios
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-info-circle"></i> Estado Actual</h6>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <h4 class="text-primary">{{ tipo_habitacion.nombre }}</h4>
+                    <div class="row">
+                        <div class="col-6">
+                            <strong>Precio</strong><br>
+                            <span class="text-success">${{ tipo_habitacion.precio_por_noche|floatformat:2 }}</span>
+                        </div>
+                        <div class="col-6">
+                            <strong>Capacidad</strong><br>
+                            <span class="text-info">{{ tipo_habitacion.capacidad_personas }} personas</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="border rounded p-2 mb-3">
+                    <strong>Habitaciones Asociadas:</strong><br>
+                    <span class="badge bg-primary">{{ tipo_habitacion.habitacion_set.count }} habitación{{ tipo_habitacion.habitacion_set.count|pluralize:"es" }}</span>
+                </div>
+                
+                {% if tipo_habitacion.habitacion_set.exists %}
+                <div class="alert alert-warning">
+                    <small>
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Los cambios de precio afectarán las nuevas reservas, pero no las existentes.
+                    </small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-exclamation-triangle text-warning"></i> Importante</h6>
+            </div>
+            <div class="card-body">
+                <ul class="small mb-0">
+                    <li>Cambiar el nombre puede afectar reportes existentes</li>
+                    <li>El nuevo precio se aplicará a futuras reservas</li>
+                    <li>Los cambios de capacidad deben ser consistentes</li>
+                    <li>Considere el impacto en habitaciones existentes</li>
+                </ul>
+            </div>
+        </div>
+        
+        {% if tipo_habitacion.habitacion_set.exists %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-bed"></i> Habitaciones de este Tipo</h6>
+            </div>
+            <div class="card-body">
+                {% for habitacion in tipo_habitacion.habitacion_set.all|slice:":5" %}
+                <div class="mb-1">
+                    <span class="badge bg-secondary">{{ habitacion.numero }}</span>
+                    <small class="text-muted">{{ habitacion.get_estado_display }}</small>
+                </div>
+                {% endfor %}
+                {% if tipo_habitacion.habitacion_set.count > 5 %}
+                <small class="text-muted">... y {{ tipo_habitacion.habitacion_set.count|add:"-5" }} más</small>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Datos originales para comparar cambios
+const datosOriginales = {
+    nombre: '{{ tipo_habitacion.nombre }}',
+    precio: {{ tipo_habitacion.precio_por_noche }},
+    capacidad: {{ tipo_habitacion.capacidad_personas }},
+    descripcion: '{{ tipo_habitacion.descripcion|escapejs }}'
+};
+
+// Actualizar vista previa en tiempo real
+document.addEventListener('DOMContentLoaded', function() {
+    const nombreInput = document.getElementById('nombre');
+    const precioInput = document.getElementById('precio_por_noche');
+    const capacidadInput = document.getElementById('capacidad_personas');
+    const descripcionInput = document.getElementById('descripcion');
+    
+    function actualizarVistaPrevia() {
+        const nombre = nombreInput.value || '-';
+        const precio = precioInput.value ? parseFloat(precioInput.value).toFixed(2) : '0.00';
+        const capacidad = capacidadInput.value || '0';
+        const descripcion = descripcionInput.value || 'Sin descripción';
+        
+        document.getElementById('preview-nombre').textContent = nombre;
+        document.getElementById('preview-precio').textContent = '$' + precio;
+        document.getElementById('preview-capacidad').textContent = capacidad;
+        document.getElementById('preview-descripcion').textContent = descripcion;
+    }
+    
+    nombreInput.addEventListener('input', actualizarVistaPrevia);
+    precioInput.addEventListener('input', actualizarVistaPrevia);
+    capacidadInput.addEventListener('input', actualizarVistaPrevia);
+    descripcionInput.addEventListener('input', actualizarVistaPrevia);
+    
+    // Validación del formulario
+    document.getElementById('tipoForm').addEventListener('submit', function(e) {
+        const nombre = nombreInput.value.trim();
+        const precio = precioInput.value;
+        const capacidad = capacidadInput.value;
+        
+        if (!nombre || !precio || !capacidad) {
+            e.preventDefault();
+            alert('Por favor complete todos los campos obligatorios');
+            return;
+        }
+        
+        if (parseFloat(precio) <= 0) {
+            e.preventDefault();
+            alert('El precio debe ser mayor a 0');
+            precioInput.focus();
+            return;
+        }
+        
+        if (parseInt(capacidad) <= 0) {
+            e.preventDefault();
+            alert('La capacidad debe ser mayor a 0');
+            capacidadInput.focus();
+            return;
+        }
+        
+        if (nombre.length < 2) {
+            e.preventDefault();
+            alert('El nombre debe tener al menos 2 caracteres');
+            nombreInput.focus();
+            return;
+        }
+        
+        // Verificar cambios importantes
+        const cambiosImportantes = [];
+        if (nombre !== datosOriginales.nombre) {
+            cambiosImportantes.push('nombre');
+        }
+        if (parseFloat(precio) !== datosOriginales.precio) {
+            cambiosImportantes.push('precio');
+        }
+        if (parseInt(capacidad) !== datosOriginales.capacidad) {
+            cambiosImportantes.push('capacidad');
+        }
+        
+        if (cambiosImportantes.length > 0) {
+            const mensaje = `¿Está seguro de cambiar: ${cambiosImportantes.join(', ')}?\n\nEsto puede afectar las habitaciones asociadas y futuras reservas.`;
+            if (!confirm(mensaje)) {
+                e.preventDefault();
+                return;
+            }
+        }
+        
+        // Desactivar botón para evitar doble envío
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('submitBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+    });
+});
+</script>
+{% endblock %}

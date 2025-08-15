@@ -1,0 +1,385 @@
+{% extends 'base.html' %}
+
+{% block title %}Reportes - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-chart-bar"></i> Reportes y Estadísticas</h1>
+        <p class="mb-0">Análisis del rendimiento del hotel</p>
+    </div>
+    <a href="{% url 'hotel:exportar_contabilidad' %}" class="btn btn-success">
+        <i class="fas fa-download"></i> Exportar Contabilidad
+    </a>
+</div>
+
+<!-- Estadísticas principales -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{{ ocupacion_hoy }}</h3>
+                    <p class="mb-0">Habitaciones Ocupadas</p>
+                </div>
+                <i class="fas fa-bed fa-2x opacity-75"></i>
+            </div>
+            <div class="mt-2">
+                <small>de {{ total_habitaciones }} habitaciones</small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card success">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{{ reservas_mes }}</h3>
+                    <p class="mb-0">Reservas del Mes</p>
+                </div>
+                <i class="fas fa-calendar-check fa-2x opacity-75"></i>
+            </div>
+            <div class="mt-2">
+                <small>{{ "now"|date:"F Y" }}</small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card warning">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">${{ ingresos_mes|floatformat:0 }}</h3>
+                    <p class="mb-0">Ingresos del Mes</p>
+                </div>
+                <i class="fas fa-dollar-sign fa-2x opacity-75"></i>
+            </div>
+            <div class="mt-2">
+                <small>{{ "now"|date:"F Y" }}</small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card danger">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{% widthratio ocupacion_hoy total_habitaciones 100 %}%</h3>
+                    <p class="mb-0">Ocupación Actual</p>
+                </div>
+                <i class="fas fa-percentage fa-2x opacity-75"></i>
+            </div>
+            <div class="mt-2">
+                <small>Tiempo real</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gráficos de análisis -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-line"></i> Ingresos por Mes</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="ingresosChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Tipos de Habitación Más Reservados</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="tiposHabitacionChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reportes detallados -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> Ocupación por Día</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="ocupacionDiariaChart" height="150"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-money-bill-wave"></i> Métodos de Pago</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="metodosPagoChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla de exportación -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-table"></i> Exportar Datos</h5>
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#filtrosExportacion">
+            <i class="fas fa-filter"></i> Filtros
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="collapse" id="filtrosExportacion">
+            <form method="get" action="{% url 'hotel:exportar_contabilidad' %}" class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">Fecha Desde</label>
+                    <input type="date" name="fecha_desde" class="form-control" value="{{ "now"|date:"Y-m-01" }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Fecha Hasta</label>
+                    <input type="date" name="fecha_hasta" class="form-control" value="{{ "now"|date:"Y-m-d" }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Tipo de Reporte</label>
+                    <select name="tipo" class="form-select">
+                        <option value="contabilidad">Contabilidad</option>
+                        <option value="reservas">Reservas</option>
+                        <option value="ocupacion">Ocupación</option>
+                        <option value="ingresos">Ingresos</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-download"></i> Exportar CSV
+                    </button>
+                </div>
+            </form>
+            <hr>
+        </div>
+        
+        <!-- Opciones de exportación rápida -->
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-file-csv fa-2x text-success mb-2"></i>
+                        <h6>Reporte de Ventas</h6>
+                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=ventas" class="btn btn-sm btn-success">Descargar</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-file-excel fa-2x text-primary mb-2"></i>
+                        <h6>Ocupación Mensual</h6>
+                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=ocupacion" class="btn btn-sm btn-primary">Descargar</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-file-pdf fa-2x text-danger mb-2"></i>
+                        <h6>Reporte de Clientes</h6>
+                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=clientes" class="btn btn-sm btn-danger">Descargar</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-file-alt fa-2x text-warning mb-2"></i>
+                        <h6>Inventario</h6>
+                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=inventario" class="btn btn-sm btn-warning">Descargar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Configuración de gráficos
+Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+Chart.defaults.plugins.legend.position = 'bottom';
+
+// Gráfico de ingresos por mes
+const ctxIngresos = document.getElementById('ingresosChart').getContext('2d');
+const ingresosChart = new Chart(ctxIngresos, {
+    type: 'line',
+    data: {
+        labels: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+        datasets: [{
+            label: 'Ingresos ($)',
+            data: [12000, 15000, 18000, 16000, 20000, 22000, 25000, 23000, 21000, 19000, 17000, {{ ingresos_mes|default:16000 }}],
+            borderColor: '#3498db',
+            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.4
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '$' + value.toLocaleString();
+                    }
+                }
+            }
+        },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return 'Ingresos: $' + context.parsed.y.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Gráfico de tipos de habitación
+const ctxTipos = document.getElementById('tiposHabitacionChart').getContext('2d');
+const tiposChart = new Chart(ctxTipos, {
+    type: 'doughnut',
+    data: {
+        labels: ['Individual', 'Doble', 'Suite', 'Familiar'],
+        datasets: [{
+            data: [30, 45, 15, 10],
+            backgroundColor: [
+                '#3498db',
+                '#2ecc71',
+                '#f39c12',
+                '#e74c3c'
+            ],
+            borderWidth: 0
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Gráfico de ocupación diaria
+const ctxOcupacion = document.getElementById('ocupacionDiariaChart').getContext('2d');
+const ocupacionChart = new Chart(ctxOcupacion, {
+    type: 'bar',
+    data: {
+        labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+        datasets: [{
+            label: 'Ocupación (%)',
+            data: [75, 80, 65, 85, 90, 95, 70],
+            backgroundColor: [
+                '#3498db',
+                '#2ecc71',
+                '#f39c12',
+                '#e74c3c',
+                '#9b59b6',
+                '#1abc9c',
+                '#34495e'
+            ],
+            borderRadius: 5
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                    callback: function(value) {
+                        return value + '%';
+                    }
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return 'Ocupación: ' + context.parsed.y + '%';
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Gráfico de métodos de pago
+const ctxMetodos = document.getElementById('metodosPagoChart').getContext('2d');
+const metodosChart = new Chart(ctxMetodos, {
+    type: 'pie',
+    data: {
+        labels: ['Efectivo', 'Tarjeta de Crédito', 'Tarjeta de Débito', 'Transferencia'],
+        datasets: [{
+            data: [25, 45, 20, 10],
+            backgroundColor: [
+                '#27ae60',
+                '#3498db',
+                '#f39c12',
+                '#e74c3c'
+            ],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Actualizar datos en tiempo real (simulado)
+function actualizarEstadisticas() {
+    // En una implementación real, harías una petición AJAX para obtener datos actuales
+    console.log('Actualizando estadísticas...');
+}
+
+// Actualizar cada 5 minutos
+setInterval(actualizarEstadisticas, 300000);
+
+// Animaciones de las tarjetas de estadísticas
+$(document).ready(function() {
+    $('.stat-card').each(function(index) {
+        $(this).delay(index * 200).animate({
+            opacity: 1
+        }, 500);
+    });
+});
+</script>
+{% endblock %}

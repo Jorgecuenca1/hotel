@@ -1,0 +1,557 @@
+{% extends 'base.html' %}
+
+{% block title %}Inventario - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-boxes"></i> Gestión de Inventario</h1>
+        <p class="mb-0">Control de productos y registro de consumos</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalRegistrarProducto" onclick="prepararModalProducto()">
+        <i class="fas fa-plus"></i> Registrar Producto
+    </button>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Categoría</label>
+                <select name="categoria" class="form-select">
+                    <option value="">Todas las categorías</option>
+                    {% for categoria in categorias %}
+                    <option value="{{ categoria.id }}" {% if filtros.categoria_id == categoria.id|stringformat:"s" %}selected{% endif %}>
+                        {{ categoria.nombre }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Buscar</label>
+                <input type="text" name="q" class="form-control" placeholder="Código o nombre del producto..." value="{{ filtros.query }}">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="fas fa-search"></i> Filtrar
+                </button>
+                <a href="{% url 'hotel:inventario' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-times"></i> Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Lista de productos -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-list"></i> Productos en Inventario</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Producto</th>
+                        <th>Categoría</th>
+                        <th>Precio</th>
+                        <th>Stock Actual</th>
+                        <th>Stock Mínimo</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for producto in productos %}
+                    <tr {% if producto.necesita_reposicion %}class="table-warning"{% endif %}>
+                        <td>
+                            <strong>{{ producto.codigo }}</strong>
+                        </td>
+                        <td>
+                            <div>
+                                <strong>{{ producto.nombre }}</strong><br>
+                                {% if producto.descripcion %}
+                                <small class="text-muted">{{ producto.descripcion|truncatewords:8 }}</small>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ producto.categoria.nombre }}</span>
+                        </td>
+                        <td>
+                            <strong>${{ producto.precio|floatformat:2 }}</strong><br>
+                            <small class="text-muted">por {{ producto.unidad_medida }}</small>
+                        </td>
+                        <td class="text-center">
+                            <span class="fs-5 {% if producto.necesita_reposicion %}text-danger fw-bold{% else %}text-success{% endif %}">
+                                {{ producto.stock_actual }}
+                            </span>
+                        </td>
+                        <td class="text-center">{{ producto.stock_minimo }}</td>
+                        <td>
+                            {% if producto.necesita_reposicion %}
+                            <span class="badge bg-danger">
+                                <i class="fas fa-exclamation-triangle"></i> Stock Bajo
+                            </span>
+                            {% else %}
+                            <span class="badge bg-success">
+                                <i class="fas fa-check"></i> Stock OK
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editarProducto({{ producto.id }})" title="Editar producto">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="ajustarStock({{ producto.id }})" title="Ajustar stock">
+                                    <i class="fas fa-boxes"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="eliminarProducto({{ producto.id }}, '{{ producto.nombre }}')" title="Eliminar producto">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-4">
+                            <i class="fas fa-box-open fa-2x text-muted mb-2"></i><br>
+                            No se encontraron productos en el inventario.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Resumen de inventario -->
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <h3 class="text-primary">{{ productos|length }}</h3>
+                <p class="mb-0">Total de Productos</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <h3 class="text-danger">
+                    {% for producto in productos %}
+                        {% if producto.necesita_reposicion %}1{% endif %}
+                    {% endfor %}
+                </h3>
+                <p class="mb-0">Productos con Stock Bajo</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <h3 class="text-success">
+                    {% for producto in productos %}
+                        {% if not producto.necesita_reposicion %}1{% endif %}
+                    {% endfor %}
+                </h3>
+                <p class="mb-0">Productos con Stock Adecuado</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Registrar/Editar Producto -->
+<div class="modal fade" id="modalRegistrarProducto" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tituloModalProducto">
+                    <i class="fas fa-plus"></i> Registrar Producto
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formRegistrarProducto">
+                    <input type="hidden" id="producto_edit_id">
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Código *</label>
+                                <input type="text" class="form-control" id="codigo_producto" required>
+                                <small class="text-muted">Código único del producto</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Categoría *</label>
+                                <select class="form-select" id="categoria_producto" required>
+                                    <option value="">Seleccionar categoría...</option>
+                                    {% for categoria in categorias %}
+                                    <option value="{{ categoria.id }}">{{ categoria.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Nombre del Producto *</label>
+                        <input type="text" class="form-control" id="nombre_producto" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea class="form-control" id="descripcion_producto" rows="2"></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Precio *</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" id="precio_producto" step="0.01" min="0" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Stock Inicial *</label>
+                                <input type="number" class="form-control" id="stock_inicial" min="0" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Stock Mínimo *</label>
+                                <input type="number" class="form-control" id="stock_minimo" min="0" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Unidad de Medida</label>
+                                <select class="form-select" id="unidad_medida">
+                                    <option value="unidad">Unidad</option>
+                                    <option value="kg">Kilogramo</option>
+                                    <option value="litro">Litro</option>
+                                    <option value="pieza">Pieza</option>
+                                    <option value="caja">Caja</option>
+                                    <option value="botella">Botella</option>
+                                    <option value="paquete">Paquete</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Estado</label>
+                                <select class="form-select" id="activo_producto">
+                                    <option value="true">Activo</option>
+                                    <option value="false">Inactivo</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="guardarProducto()" id="btnGuardarProducto">
+                    <i class="fas fa-save"></i> Registrar Producto
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ajustar Stock -->
+<div class="modal fade" id="modalAjustarStock" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-edit"></i> Ajustar Stock</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formAjustarStock">
+                    <div class="mb-3">
+                        <label class="form-label">Producto</label>
+                        <input type="text" class="form-control" id="productoAjuste" readonly>
+                        <input type="hidden" id="producto_ajuste_id">
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-6">
+                            <label class="form-label">Stock Actual</label>
+                            <input type="text" class="form-control" id="stockActual" readonly>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Nuevo Stock</label>
+                            <input type="number" class="form-control" id="nuevoStock" min="0" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <label class="form-label">Motivo del Ajuste</label>
+                        <select class="form-select" id="motivoAjuste">
+                            <option value="reposicion">Reposición</option>
+                            <option value="correccion">Corrección de inventario</option>
+                            <option value="merma">Merma</option>
+                            <option value="otro">Otro</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <label class="form-label">Observaciones</label>
+                        <textarea class="form-control" id="observacionesAjuste" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="guardarAjuste()">Ajustar Stock</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// GESTIÓN DE PRODUCTOS EN INVENTARIO
+
+// NUEVAS FUNCIONES PARA GESTIÓN DE PRODUCTOS
+
+let modoEdicion = false;
+
+// FUNCIÓN PARA PREPARAR EL MODAL DE PRODUCTO
+function prepararModalProducto() {
+    console.log('Preparando modal para registrar producto...');
+    modoEdicion = false;
+    
+    // Limpiar formulario
+    const form = document.getElementById('formRegistrarProducto');
+    if (form) form.reset();
+    
+    // Configurar modal para registro
+    document.getElementById('tituloModalProducto').innerHTML = '<i class="fas fa-plus"></i> Registrar Producto';
+    document.getElementById('btnGuardarProducto').innerHTML = '<i class="fas fa-save"></i> Registrar Producto';
+    document.getElementById('producto_edit_id').value = '';
+}
+
+// FUNCIÓN PARA EDITAR PRODUCTO
+function editarProducto(productoId) {
+    console.log('Editando producto ID:', productoId);
+    modoEdicion = true;
+    
+    // Configurar modal para edición
+    document.getElementById('tituloModalProducto').innerHTML = '<i class="fas fa-edit"></i> Editar Producto';
+    document.getElementById('btnGuardarProducto').innerHTML = '<i class="fas fa-save"></i> Actualizar Producto';
+    document.getElementById('producto_edit_id').value = productoId;
+    
+    // Obtener datos de la fila
+    const row = event.target.closest('tr');
+    if (row) {
+        const cells = row.cells;
+        document.getElementById('codigo_producto').value = cells[0].textContent.trim();
+        document.getElementById('nombre_producto').value = cells[1].querySelector('strong').textContent.trim();
+        
+        // Precio (remover $ y convertir)
+        const precioText = cells[3].querySelector('strong').textContent.replace('$', '');
+        document.getElementById('precio_producto').value = precioText;
+        
+        // Stock actual
+        document.getElementById('stock_inicial').value = cells[4].textContent.trim();
+        
+        // Stock mínimo
+        document.getElementById('stock_minimo').value = cells[5].textContent.trim();
+    }
+    
+    // Mostrar modal
+    const modal = new bootstrap.Modal(document.getElementById('modalRegistrarProducto'));
+    modal.show();
+}
+
+// FUNCIÓN PARA ELIMINAR PRODUCTO
+function eliminarProducto(productoId, nombreProducto) {
+    console.log('Eliminando producto:', productoId, nombreProducto);
+    
+    if (confirm(`¿Está seguro de que desea eliminar el producto "${nombreProducto}"?\n\nEsta acción no se puede deshacer.`)) {
+        // Crear formulario para envío
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{% url "hotel:eliminar_producto" %}';
+        
+        // CSRF Token
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrfmiddlewaretoken';
+        csrfInput.value = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        form.appendChild(csrfInput);
+        
+        // ID del producto
+        const productoInput = document.createElement('input');
+        productoInput.type = 'hidden';
+        productoInput.name = 'producto_id';
+        productoInput.value = productoId;
+        form.appendChild(productoInput);
+        
+        // Enviar formulario
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// FUNCIÓN PARA GUARDAR PRODUCTO
+function guardarProducto() {
+    console.log('Guardando producto...');
+    
+    // Validación básica
+    const codigo = document.getElementById('codigo_producto').value;
+    const nombre = document.getElementById('nombre_producto').value;
+    const categoria = document.getElementById('categoria_producto').value;
+    const precio = document.getElementById('precio_producto').value;
+    const stockInicial = document.getElementById('stock_inicial').value;
+    const stockMinimo = document.getElementById('stock_minimo').value;
+    
+    if (!codigo || !nombre || !categoria || !precio || !stockInicial || !stockMinimo) {
+        alert('Por favor complete todos los campos obligatorios (*)');
+        return;
+    }
+    
+    const esEdicion = modoEdicion && document.getElementById('producto_edit_id').value;
+    const accion = esEdicion ? 'actualizar' : 'crear';
+    
+    if (confirm(`¿Confirmar ${accion} el producto "${nombre}"?`)) {
+        // Crear formulario para envío
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = esEdicion ? '{% url "hotel:editar_producto" %}' : '{% url "hotel:crear_producto" %}';
+        
+        // CSRF Token
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrfmiddlewaretoken';
+        csrfInput.value = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        form.appendChild(csrfInput);
+        
+        // Datos del producto
+        const campos = [
+            'codigo_producto', 'nombre_producto', 'descripcion_producto', 
+            'categoria_producto', 'precio_producto', 'stock_inicial', 
+            'stock_minimo', 'unidad_medida', 'activo_producto'
+        ];
+        
+        if (esEdicion) {
+            const idInput = document.createElement('input');
+            idInput.type = 'hidden';
+            idInput.name = 'producto_id';
+            idInput.value = document.getElementById('producto_edit_id').value;
+            form.appendChild(idInput);
+        }
+        
+        campos.forEach(campoId => {
+            const elemento = document.getElementById(campoId);
+            if (elemento) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = campoId;
+                input.value = elemento.value;
+                form.appendChild(input);
+            }
+        });
+        
+        // Enviar formulario
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// FUNCIÓN PARA AJUSTAR STOCK (Mejorada)
+function ajustarStock(productoId) {
+    console.log('Ajustando stock del producto:', productoId);
+    
+    // Obtener información del producto desde la fila
+    const row = event.target.closest('tr');
+    if (row) {
+        const cells = row.cells;
+        const codigo = cells[0].textContent.trim();
+        const nombre = cells[1].querySelector('strong').textContent.trim();
+        const stockActual = cells[4].textContent.trim();
+        
+        document.getElementById('producto_ajuste_id').value = productoId;
+        document.getElementById('productoAjuste').value = `${codigo} - ${nombre}`;
+        document.getElementById('stockActual').value = stockActual;
+        document.getElementById('nuevoStock').value = stockActual;
+        document.getElementById('motivoAjuste').value = 'reposicion';
+        document.getElementById('observacionesAjuste').value = '';
+        
+        // Mostrar modal
+        $('#modalAjustarStock').modal('show');
+    }
+}
+
+function guardarAjuste() {
+    const productoId = document.getElementById('producto_ajuste_id').value;
+    const nuevoStock = document.getElementById('nuevoStock').value;
+    const motivo = document.getElementById('motivoAjuste').value;
+    
+    if (!nuevoStock || !motivo) {
+        alert('Por favor complete el nuevo stock y el motivo del ajuste');
+        return;
+    }
+    
+    if (confirm('¿Confirmar el ajuste de stock?')) {
+        // Crear formulario para envío
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{% url "hotel:ajustar_stock" %}';
+        
+        // CSRF Token
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrfmiddlewaretoken';
+        csrfInput.value = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        form.appendChild(csrfInput);
+        
+        // Datos del ajuste
+        const inputs = [
+            {name: 'producto_id', value: productoId},
+            {name: 'nuevo_stock', value: nuevoStock},
+            {name: 'motivo', value: motivo}
+        ];
+        
+        inputs.forEach(inputData => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = inputData.name;
+            input.value = inputData.value;
+            form.appendChild(input);
+        });
+        
+        // Enviar formulario
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// INICIALIZACIÓN AL CARGAR LA PÁGINA
+$(document).ready(function() {
+    console.log('✅ Página de inventario cargada');
+    
+    // Resaltar productos con stock bajo
+    $('tr.table-warning').each(function() {
+        $(this).find('td:nth-child(5)').append(' <i class="fas fa-exclamation-triangle text-danger"></i>');
+    });
+});
+</script>
+{% endblock %}

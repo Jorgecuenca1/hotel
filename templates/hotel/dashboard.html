@@ -1,0 +1,355 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-tachometer-alt"></i> Dashboard</h1>
+    <p class="mb-0">Resumen general del hotel</p>
+</div>
+
+<!-- Estadísticas principales -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card success">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{{ habitaciones_disponibles }}</h3>
+                    <p class="mb-0">Habitaciones Disponibles</p>
+                </div>
+                <i class="fas fa-bed fa-2x opacity-75"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card danger">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{{ habitaciones_ocupadas }}</h3>
+                    <p class="mb-0">Habitaciones Ocupadas</p>
+                </div>
+                <i class="fas fa-door-closed fa-2x opacity-75"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card warning">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{{ reservas_hoy }}</h3>
+                    <p class="mb-0">Check-ins Hoy</p>
+                </div>
+                <i class="fas fa-calendar-check fa-2x opacity-75"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">${{ ingresos_mes|floatformat:2 }}</h3>
+                    <p class="mb-0">Ingresos del Mes</p>
+                </div>
+                <i class="fas fa-dollar-sign fa-2x opacity-75"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Acciones rápidas -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bolt"></i> Acciones Rápidas</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <button class="btn btn-primary w-100" onclick="nuevaReserva()">
+                            <i class="fas fa-plus"></i><br>
+                            Nueva Reserva
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <button class="btn btn-success w-100" onclick="checkIn()">
+                            <i class="fas fa-sign-in-alt"></i><br>
+                            Check-in
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <button class="btn btn-warning w-100" onclick="registrarConsumo()">
+                            <i class="fas fa-shopping-cart"></i><br>
+                            Registrar Consumo
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <button class="btn btn-info w-100" onclick="registrarPago()">
+                            <i class="fas fa-credit-card"></i><br>
+                            Registrar Pago
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ocupación de habitaciones -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Ocupación de Habitaciones</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="ocupacionChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Alertas</h5>
+            </div>
+            <div class="card-body">
+                {% if productos_bajo_stock > 0 %}
+                <div class="alert alert-warning">
+                    <i class="fas fa-box"></i>
+                    <strong>{{ productos_bajo_stock }}</strong> productos con stock bajo
+                    <a href="{% url 'hotel:inventario' %}" class="btn btn-sm btn-outline-warning ms-2">Ver</a>
+                </div>
+                {% endif %}
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    Sistema funcionando correctamente
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reservas recientes -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-calendar"></i> Reservas del Día</h5>
+                <a href="{% url 'hotel:reservas' %}" class="btn btn-outline-light btn-sm">Ver todas</a>
+            </div>
+            <div class="card-body">
+                <div id="reservas-hoy"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nueva Reserva -->
+<div class="modal fade" id="modalNuevaReserva" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> Nueva Reserva</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formNuevaReserva">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Cliente</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="buscarCliente" placeholder="Buscar cliente...">
+                                <button type="button" class="btn btn-outline-secondary" onclick="nuevoCliente()">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                            <input type="hidden" id="cliente_id">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Número de Huéspedes</label>
+                            <input type="number" class="form-control" id="numero_huespedes" value="1" min="1">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha de Entrada</label>
+                            <input type="date" class="form-control" id="fecha_entrada" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha de Salida</label>
+                            <input type="date" class="form-control" id="fecha_salida" required>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Habitación</label>
+                            <select class="form-select" id="habitacion_id" required>
+                                <option value="">Seleccionar fechas para ver habitaciones disponibles</option>
+                            </select>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Observaciones</label>
+                            <textarea class="form-control" id="observaciones" rows="3"></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="guardarReserva()">Guardar Reserva</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Gráfico de ocupación
+    const ctx = document.getElementById('ocupacionChart').getContext('2d');
+    const ocupacionChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Disponibles', 'Ocupadas', 'Mantenimiento', 'Limpieza'],
+            datasets: [{
+                data: [{{ habitaciones_disponibles }}, {{ habitaciones_ocupadas }}, 0, 0],
+                backgroundColor: [
+                    '#27ae60',
+                    '#e74c3c',
+                    '#f39c12',
+                    '#3498db'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+
+    // Funciones de acciones rápidas
+    function nuevaReserva() {
+        document.getElementById('fecha_entrada').value = new Date().toISOString().split('T')[0];
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        document.getElementById('fecha_salida').value = tomorrow.toISOString().split('T')[0];
+        
+        $('#modalNuevaReserva').modal('show');
+    }
+
+    function checkIn() {
+        window.location.href = '{% url "hotel:reservas" %}?estado=confirmada';
+    }
+
+    function registrarConsumo() {
+        window.location.href = '{% url "hotel:inventario" %}';
+    }
+
+    function registrarPago() {
+        window.location.href = '{% url "hotel:reservas" %}?estado=en_curso';
+    }
+
+    // Buscar habitaciones disponibles cuando cambien las fechas
+    $('#fecha_entrada, #fecha_salida').on('change', function() {
+        const fechaEntrada = $('#fecha_entrada').val();
+        const fechaSalida = $('#fecha_salida').val();
+        
+        if (fechaEntrada && fechaSalida && fechaEntrada < fechaSalida) {
+            showLoading();
+            $.get('{% url "hotel:api_habitaciones_disponibles" %}', {
+                fecha_entrada: fechaEntrada,
+                fecha_salida: fechaSalida
+            })
+            .done(function(data) {
+                const select = $('#habitacion_id');
+                select.empty();
+                
+                if (data.habitaciones.length === 0) {
+                    select.append('<option value="">No hay habitaciones disponibles</option>');
+                } else {
+                    select.append('<option value="">Seleccionar habitación</option>');
+                    data.habitaciones.forEach(function(hab) {
+                        select.append(`<option value="${hab.id}">Habitación ${hab.numero} - ${hab.tipo} ($${hab.precio}/noche)</option>`);
+                    });
+                }
+            })
+            .fail(function() {
+                showNotification('error', 'Error', 'No se pudieron cargar las habitaciones disponibles');
+            })
+            .always(function() {
+                hideLoading();
+            });
+        }
+    });
+
+    // Buscar clientes
+    $('#buscarCliente').on('input', function() {
+        const query = $(this).val();
+        
+        if (query.length < 2) return;
+        
+        $.get('{% url "hotel:api_buscar_cliente" %}', { q: query })
+        .done(function(data) {
+            // Aquí podrías implementar un dropdown con los resultados
+            console.log(data.clientes);
+        });
+    });
+
+    // Guardar reserva
+    function guardarReserva() {
+        const data = {
+            cliente_id: $('#cliente_id').val(),
+            habitacion_id: $('#habitacion_id').val(),
+            fecha_entrada: $('#fecha_entrada').val(),
+            fecha_salida: $('#fecha_salida').val(),
+            numero_huespedes: $('#numero_huespedes').val(),
+            observaciones: $('#observaciones').val()
+        };
+
+        if (!data.cliente_id || !data.habitacion_id) {
+            showNotification('warning', 'Datos incompletos', 'Por favor complete todos los campos requeridos');
+            return;
+        }
+
+        showLoading();
+        $.post('{% url "hotel:reserva_create" %}', JSON.stringify(data), 'json')
+        .done(function(response) {
+            if (response.success) {
+                showNotification('success', 'Éxito', 'Reserva creada correctamente');
+                $('#modalNuevaReserva').modal('hide');
+                location.reload();
+            } else {
+                showNotification('error', 'Error', response.error || 'Error al crear la reserva');
+            }
+        })
+        .fail(function() {
+            showNotification('error', 'Error', 'Error de conexión');
+        })
+        .always(function() {
+            hideLoading();
+        });
+    }
+
+    // Cargar reservas del día
+    function cargarReservasHoy() {
+        $.get('{% url "hotel:reservas" %}', { fecha_entrada: new Date().toISOString().split('T')[0] })
+        .done(function(data) {
+            // Aquí procesarías los datos y mostrarías las reservas
+            $('#reservas-hoy').html('<p class="text-muted">Las reservas del día se mostrarán aquí</p>');
+        });
+    }
+
+    // Cargar datos al iniciar
+    $(document).ready(function() {
+        cargarReservasHoy();
+    });
+</script>
+{% endblock %}
