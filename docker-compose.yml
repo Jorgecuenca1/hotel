@@ -30,9 +30,8 @@ services:
       - '80:80'
       - '443:443'
     environment:
-      DOMAINS: 'hotel.corpofuturo.org -> http://backend:8002'
+      DOMAINS: 'hotel2.corpofuturo.org -> http://backend:8002'
       STAGE: 'production'  # Cambiar a 'production' cuando todo funcione bien
-      FORCE_RENEW: 'false'
       CLIENT_MAX_BODY_SIZE: 5M
     volumes:
       - https-portal-data:/var/lib/https-portal
