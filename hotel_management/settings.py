@@ -18,7 +18,7 @@ SECRET_KEY = 'django-insecure-hotel-management-secret-key-change-in-production'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*', 'solucionesfinancierasglobal.com', 'mivoto.solucionesfinancierasglobal.com','hotel.corpofuturo.org','corpofuturo.org']
+ALLOWED_HOSTS = ['*', 'solucionesfinancierasglobal.com', 'mivoto.solucionesfinancierasglobal.com','hotel.corpofuturo.org','hotel2.corpofuturo.org','corpofuturo.org']
 
 
 
@@ -49,6 +49,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://bitlink.com.co",
     "https://mivoto.solucionesfinancierasglobal.com",
     "https://hotel.corpofuturo.org",
+    "https://hotel2.corpofuturo.org",
 ]
 
 # En desarrollo, permitir cualquier origen (Flutter web en puertos variables)
@@ -59,6 +60,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://mivoto.solucionesfinancierasglobal.com",
     "http://localhost:8000",
     "https://hotel.corpofuturo.org",
+    "https://hotel2.corpofuturo.org",
     "http://127.0.0.1:8000"
 ]
 TEMPLATES = [
