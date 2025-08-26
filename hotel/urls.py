@@ -52,8 +52,17 @@ urlpatterns = [
     path('reportes/', views.reportes, name='reportes'),
     path('exportar-contabilidad/', views.exportar_contabilidad, name='exportar_contabilidad'),
     
+    # Reportes PDF
+    path('reportes/todas-reservas-pdf/', views.reporte_todas_reservas_pdf, name='reporte_todas_reservas_pdf'),
+    path('reportes/por-cliente-pdf/', views.reporte_por_cliente_pdf, name='reporte_por_cliente_pdf'),
+    path('reportes/por-fecha-pdf/', views.reporte_por_fecha_pdf, name='reporte_por_fecha_pdf'),
+    
     # API
     path('api/habitaciones-disponibles/', views.api_habitaciones_disponibles, name='api_habitaciones_disponibles'),
     path('api/buscar-cliente/', views.api_buscar_cliente, name='api_buscar_cliente'),
+    path('api/crear-cliente/', views.api_crear_cliente, name='api_crear_cliente'),
+    path('api/extender-reserva/', views.api_extender_reserva, name='api_extender_reserva'),
+    path('api/agregar-ajuste/', views.api_agregar_ajuste, name='api_agregar_ajuste'),
+    path('api/eliminar-ajuste/', views.api_eliminar_ajuste, name='api_eliminar_ajuste'),
     path('api/productos/', views.api_productos, name='api_productos'),
 ]

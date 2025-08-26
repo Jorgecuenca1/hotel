@@ -170,7 +170,7 @@
                     <div class="card-body">
                         <i class="fas fa-file-csv fa-2x text-success mb-2"></i>
                         <h6>Reporte de Ventas</h6>
-                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=ventas" class="btn btn-sm btn-success">Descargar</a>
+                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=ventas" class="btn btn-sm btn-success">Descargar CSV</a>
                     </div>
                 </div>
             </div>
@@ -180,7 +180,7 @@
                     <div class="card-body">
                         <i class="fas fa-file-excel fa-2x text-primary mb-2"></i>
                         <h6>Ocupación Mensual</h6>
-                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=ocupacion" class="btn btn-sm btn-primary">Descargar</a>
+                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=ocupacion" class="btn btn-sm btn-primary">Descargar CSV</a>
                     </div>
                 </div>
             </div>
@@ -189,8 +189,8 @@
                 <div class="card text-center">
                     <div class="card-body">
                         <i class="fas fa-file-pdf fa-2x text-danger mb-2"></i>
-                        <h6>Reporte de Clientes</h6>
-                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=clientes" class="btn btn-sm btn-danger">Descargar</a>
+                        <h6>Todas las Reservas</h6>
+                        <a href="{% url 'hotel:reporte_todas_reservas_pdf' %}" class="btn btn-sm btn-danger">Descargar PDF</a>
                     </div>
                 </div>
             </div>
@@ -200,10 +200,84 @@
                     <div class="card-body">
                         <i class="fas fa-file-alt fa-2x text-warning mb-2"></i>
                         <h6>Inventario</h6>
-                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=inventario" class="btn btn-sm btn-warning">Descargar</a>
+                        <a href="{% url 'hotel:exportar_contabilidad' %}?tipo=inventario" class="btn btn-sm btn-warning">Descargar CSV</a>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reportes PDF Avanzados -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-file-pdf text-danger"></i> Reportes PDF Avanzados</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <!-- Reporte por Cliente -->
+            <div class="col-md-6 mb-4">
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0"><i class="fas fa-user"></i> Reporte por Cliente</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Generar reporte completo de un cliente específico con todas sus reservas, pagos y consumos.</p>
+                        <form method="get" action="{% url 'hotel:reporte_por_cliente_pdf' %}" class="mb-3">
+                            <div class="mb-3">
+                                <label class="form-label">Seleccionar Cliente</label>
+                                <select name="cliente_id" class="form-select" required>
+                                    <option value="">Seleccione un cliente...</option>
+                                    {% for cliente in clientes %}
+                                    <option value="{{ cliente.id }}">{{ cliente.nombre_completo }} - {{ cliente.numero_documento }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-download"></i> Generar Reporte PDF
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Reporte por Fechas -->
+            <div class="col-md-6 mb-4">
+                <div class="card border-success">
+                    <div class="card-header bg-success text-white">
+                        <h6 class="mb-0"><i class="fas fa-calendar-alt"></i> Reporte por Fechas</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Generar reporte de todas las reservas en un período específico con estadísticas detalladas.</p>
+                        <form method="get" action="{% url 'hotel:reporte_por_fecha_pdf' %}" class="mb-3">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Fecha Desde</label>
+                                    <input type="date" name="fecha_desde" class="form-control" value="{{ "now"|date:"Y-m-01" }}" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Fecha Hasta</label>
+                                    <input type="date" name="fecha_hasta" class="form-control" value="{{ "now"|date:"Y-m-d" }}" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="fas fa-download"></i> Generar Reporte PDF
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Información adicional -->
+        <div class="alert alert-info">
+            <h6><i class="fas fa-info-circle"></i> Información sobre los Reportes PDF</h6>
+            <ul class="mb-0">
+                <li><strong>Reporte Completo:</strong> Incluye todas las reservas con información detallada de clientes, consumos, ajustes y pagos.</li>
+                <li><strong>Reporte por Cliente:</strong> Muestra el historial completo de un cliente específico con resumen financiero.</li>
+                <li><strong>Reporte por Fechas:</strong> Análisis estadístico de reservas en un período determinado.</li>
+                <li><strong>Formato:</strong> Todos los reportes se generan en formato PDF profesional con tablas y gráficos.</li>
+            </ul>
         </div>
     </div>
 </div>

@@ -25,7 +25,15 @@
             <div class="card-body">
                 <p><strong>Cliente:</strong> {{ reserva.cliente.nombre_completo }}</p>
                 <p><strong>Habitación:</strong> {{ reserva.habitacion.numero }} - {{ reserva.habitacion.tipo.nombre }}</p>
-                <p><strong>Fechas:</strong> {{ reserva.fecha_entrada|date:"d/m/Y" }} - {{ reserva.fecha_salida|date:"d/m/Y" }}</p>
+                <p><strong>Fechas:</strong> {{ reserva.fecha_entrada|date:"d/m/Y" }} - 
+                    {% if reserva.fecha_salida %}
+                        {{ reserva.fecha_salida|date:"d/m/Y" }}
+                        <br><small class="text-muted">{{ reserva.dias_estancia }} noches</small>
+                    {% else %}
+                        <span class="badge bg-warning">Indefinida</span>
+                        <br><small class="text-muted">Cobrando por días transcurridos</small>
+                    {% endif %}
+                </p>
                 <p class="mb-0"><strong>Estado:</strong> 
                     <span class="badge 
                         {% if reserva.estado == 'pendiente' %}bg-warning
@@ -46,18 +54,37 @@
                 <h5 class="mb-0"><i class="fas fa-calculator"></i> Resumen Financiero</h5>
             </div>
             <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-6">
-                        <h4 class="text-primary">${{ total_reserva|floatformat:2 }}</h4>
-                        <small>Total a Pagar</small>
+                <!-- Desglose detallado -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Habitación:</span>
+                        <span>${{ reserva.precio_total|floatformat:2 }}</span>
                     </div>
-                    <div class="col-6">
-                        <h4 class="{% if saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">
+                    <div class="d-flex justify-content-between">
+                        <span>Consumos:</span>
+                        <span>${{ reserva.subtotal_consumos|floatformat:2 }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Ajustes:</span>
+                        <span class="{% if reserva.subtotal_ajustes >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            ${{ reserva.subtotal_ajustes|floatformat:2 }}
+                        </span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between fw-bold">
+                        <span>Total:</span>
+                        <span>${{ total_reserva|floatformat:2 }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between text-muted">
+                        <span>Pagado:</span>
+                        <span>-${{ total_pagado|floatformat:2 }}</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between fw-bold">
+                        <span>Saldo Pendiente:</span>
+                        <span class="{% if saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">
                             ${{ saldo_pendiente|floatformat:2 }}
-                        </h4>
-                        <small>
-                            {% if saldo_pendiente > 0 %}Saldo Pendiente{% else %}Pagado Completo{% endif %}
-                        </small>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -291,6 +318,31 @@ document.addEventListener('DOMContentLoaded', function() {
     const spanMitad = document.getElementById('mitad-saldo');
     if (spanMitad) {
         spanMitad.textContent = mitadSaldo;
+    }
+    
+    // Verificar si se debe pagar todo automáticamente
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('pagar_todo') === '1') {
+        establecerMonto(saldoPendiente);
+        
+        // Mostrar notificación
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Pago Completo Preestablecido',
+                text: `Monto configurado para pagar todo: $${saldoPendiente.toFixed(2)}`,
+                icon: 'info',
+                timer: 3000,
+                showConfirmButton: false,
+                toast: true,
+                position: 'top-end'
+            });
+        }
+        
+        // Enfocar el método de pago
+        const metodoPago = document.getElementById('metodo_pago');
+        if (metodoPago) {
+            metodoPago.focus();
+        }
     }
 });
 </script>

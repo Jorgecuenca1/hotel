@@ -162,13 +162,21 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Cliente</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="buscarCliente" placeholder="Buscar cliente...">
-                                <button type="button" class="btn btn-outline-secondary" onclick="nuevoCliente()">
+                            <div class="input-group position-relative">
+                                <input type="text" class="form-control" id="buscarCliente" placeholder="Buscar cliente..." autocomplete="off">
+                                <button type="button" class="btn btn-outline-secondary" onclick="abrirModalNuevoCliente()">
                                     <i class="fas fa-plus"></i>
                                 </button>
+                                <!-- Dropdown de resultados -->
+                                <div id="dropdownClientes" class="dropdown-menu w-100" style="display: none; position: absolute; top: 100%; z-index: 1050;">
+                                </div>
                             </div>
                             <input type="hidden" id="cliente_id">
+                            <div id="clienteInfo" class="mt-2" style="display: none;">
+                                <small class="text-success">
+                                    <i class="fas fa-check"></i> <span id="clienteNombre"></span>
+                                </small>
+                            </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Número de Huéspedes</label>
@@ -180,7 +188,14 @@
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Fecha de Salida</label>
-                            <input type="date" class="form-control" id="fecha_salida" required>
+                            <div class="input-group">
+                                <input type="date" class="form-control" id="fecha_salida">
+                                <div class="input-group-text">
+                                    <input type="checkbox" id="fecha_indefinida" onchange="toggleFechaIndefinida()">
+                                    <label class="ms-1" for="fecha_indefinida">Indefinida</label>
+                                </div>
+                            </div>
+                            <small class="text-muted">Marque "Indefinida" para reservas sin fecha de salida específica</small>
                         </div>
                         <div class="col-12 mb-3">
                             <label class="form-label">Habitación</label>
@@ -198,6 +213,65 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="button" class="btn btn-primary" onclick="guardarReserva()">Guardar Reserva</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuevo Cliente -->
+<div class="modal fade" id="modalNuevoCliente" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-plus text-success me-2"></i>
+                    Nuevo Cliente
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formNuevoCliente">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre *</label>
+                            <input type="text" class="form-control" id="nuevo_nombre" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Apellido *</label>
+                            <input type="text" class="form-control" id="nuevo_apellido" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipo Documento</label>
+                            <select class="form-select" id="nuevo_tipo_documento">
+                                <option value="cedula">Cédula</option>
+                                <option value="pasaporte">Pasaporte</option>
+                                <option value="tarjeta_identidad">Tarjeta de Identidad</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Número Documento *</label>
+                            <input type="text" class="form-control" id="nuevo_numero_documento" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Teléfono</label>
+                            <input type="tel" class="form-control" id="nuevo_telefono">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" id="nuevo_email">
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Dirección</label>
+                            <textarea class="form-control" id="nuevo_direccion" rows="2"></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" onclick="guardarNuevoCliente()">
+                    <i class="fas fa-save me-1"></i>Guardar Cliente
+                </button>
             </div>
         </div>
     </div>
@@ -290,32 +364,129 @@
         }
     });
 
-    // Buscar clientes
+    // Buscar clientes con autocompletado dinámico
     $('#buscarCliente').on('input', function() {
         const query = $(this).val();
+        const dropdown = $('#dropdownClientes');
         
-        if (query.length < 2) return;
+        if (query.length < 2) {
+            dropdown.hide();
+            $('#clienteInfo').hide();
+            $('#cliente_id').val('');
+            return;
+        }
         
         $.get('{% url "hotel:api_buscar_cliente" %}', { q: query })
         .done(function(data) {
-            // Aquí podrías implementar un dropdown con los resultados
-            console.log(data.clientes);
+            dropdown.empty();
+            
+            if (data.clientes.length > 0) {
+                data.clientes.forEach(function(cliente) {
+                    const item = $(`
+                        <a class="dropdown-item" href="#" onclick="seleccionarCliente(${cliente.id}, '${cliente.nombre_completo}')">
+                            <div>
+                                <strong>${cliente.nombre_completo}</strong>
+                                <br>
+                                <small class="text-muted">${cliente.numero_documento} - ${cliente.telefono || 'Sin teléfono'}</small>
+                            </div>
+                        </a>
+                    `);
+                    dropdown.append(item);
+                });
+                dropdown.show();
+            } else {
+                dropdown.append('<div class="dropdown-item-text text-muted">No se encontraron clientes</div>');
+                dropdown.show();
+            }
         });
     });
 
-    // Guardar reserva
+    // Ocultar dropdown al hacer clic fuera
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('#buscarCliente, #dropdownClientes').length) {
+            $('#dropdownClientes').hide();
+        }
+    });
+
+    // Función para manejar fecha indefinida
+    function toggleFechaIndefinida() {
+        const checkbox = document.getElementById('fecha_indefinida');
+        const fechaSalida = document.getElementById('fecha_salida');
+        
+        if (checkbox.checked) {
+            fechaSalida.value = '';
+            fechaSalida.disabled = true;
+            fechaSalida.removeAttribute('required');
+        } else {
+            fechaSalida.disabled = false;
+            fechaSalida.setAttribute('required', 'required');
+        }
+        
+        // Recargar habitaciones disponibles
+        cargarHabitacionesDisponiblesDashboard();
+    }
+
+    // Función para cargar habitaciones disponibles en dashboard
+    function cargarHabitacionesDisponiblesDashboard() {
+        const fechaEntrada = $('#fecha_entrada').val();
+        const fechaSalida = $('#fecha_salida').val();
+        const fechaIndefinida = document.getElementById('fecha_indefinida').checked;
+        
+        if (fechaEntrada && (fechaSalida || fechaIndefinida)) {
+            if (!fechaIndefinida && fechaEntrada >= fechaSalida) {
+                $('#habitacion_id').empty().append('<option value="">La fecha de salida debe ser posterior a la entrada</option>');
+                return;
+            }
+            
+            showLoading();
+            const params = { fecha_entrada: fechaEntrada };
+            if (!fechaIndefinida) {
+                params.fecha_salida = fechaSalida;
+            }
+            
+            $.get('{% url "hotel:api_habitaciones_disponibles" %}', params)
+            .done(function(data) {
+                const select = $('#habitacion_id');
+                select.empty();
+                
+                if (data.habitaciones.length === 0) {
+                    select.append('<option value="">No hay habitaciones disponibles</option>');
+                } else {
+                    select.append('<option value="">Seleccionar habitación</option>');
+                    data.habitaciones.forEach(function(hab) {
+                        const precio = fechaIndefinida ? 'Precio por día' : `$${hab.precio}/noche`;
+                        select.append(`<option value="${hab.id}">Habitación ${hab.numero} - ${hab.tipo} (${precio})</option>`);
+                    });
+                }
+            })
+            .fail(function() {
+                showNotification('error', 'Error', 'No se pudieron cargar las habitaciones disponibles');
+            })
+            .always(function() {
+                hideLoading();
+            });
+        }
+    }
+
+    // Guardar reserva (actualizada para fechas indefinidas)
     function guardarReserva() {
+        const fechaIndefinida = document.getElementById('fecha_indefinida').checked;
         const data = {
             cliente_id: $('#cliente_id').val(),
             habitacion_id: $('#habitacion_id').val(),
             fecha_entrada: $('#fecha_entrada').val(),
-            fecha_salida: $('#fecha_salida').val(),
+            fecha_salida: fechaIndefinida ? '' : $('#fecha_salida').val(),
             numero_huespedes: $('#numero_huespedes').val(),
             observaciones: $('#observaciones').val()
         };
 
-        if (!data.cliente_id || !data.habitacion_id) {
+        if (!data.cliente_id || !data.habitacion_id || !data.fecha_entrada) {
             showNotification('warning', 'Datos incompletos', 'Por favor complete todos los campos requeridos');
+            return;
+        }
+        
+        if (!fechaIndefinida && !data.fecha_salida) {
+            showNotification('warning', 'Fecha de salida requerida', 'Por favor seleccione una fecha de salida o marque como indefinida');
             return;
         }
 
@@ -347,9 +518,73 @@
         });
     }
 
+    // Event listeners para fechas en dashboard
+    $('#fecha_entrada, #fecha_salida').on('change', cargarHabitacionesDisponiblesDashboard);
+
     // Cargar datos al iniciar
     $(document).ready(function() {
         cargarReservasHoy();
     });
+
+    // Función para seleccionar cliente del dropdown
+    function seleccionarCliente(id, nombre) {
+        $('#cliente_id').val(id);
+        $('#buscarCliente').val(nombre);
+        $('#clienteNombre').text(nombre);
+        $('#clienteInfo').show();
+        $('#dropdownClientes').hide();
+    }
+
+    // Funciones para modal de nuevo cliente
+    function abrirModalNuevoCliente() {
+        // Limpiar formulario
+        $('#formNuevoCliente')[0].reset();
+        $('#modalNuevoCliente').modal('show');
+    }
+
+    function guardarNuevoCliente() {
+        const data = {
+            nombre: $('#nuevo_nombre').val().trim(),
+            apellido: $('#nuevo_apellido').val().trim(),
+            tipo_documento: $('#nuevo_tipo_documento').val(),
+            numero_documento: $('#nuevo_numero_documento').val().trim(),
+            telefono: $('#nuevo_telefono').val().trim(),
+            email: $('#nuevo_email').val().trim(),
+            direccion: $('#nuevo_direccion').val().trim()
+        };
+
+        // Validaciones básicas
+        if (!data.nombre || !data.apellido || !data.numero_documento) {
+            showNotification('warning', 'Datos incompletos', 'Por favor complete los campos obligatorios (nombre, apellido y número de documento)');
+            return;
+        }
+
+        showLoading();
+        $.post('{% url "hotel:api_crear_cliente" %}', JSON.stringify(data), 'json')
+        .done(function(response) {
+            if (response.success) {
+                // Cerrar modal de nuevo cliente
+                $('#modalNuevoCliente').modal('hide');
+                
+                // Seleccionar automáticamente el cliente recién creado
+                const cliente = response.cliente;
+                $('#cliente_id').val(cliente.id);
+                $('#buscarCliente').val(cliente.nombre_completo);
+                $('#clienteNombre').text(cliente.nombre_completo);
+                $('#clienteInfo').show();
+                $('#dropdownClientes').hide();
+                
+                showNotification('success', 'Cliente creado', 'El cliente se ha creado correctamente y se ha seleccionado para la reserva');
+            } else {
+                showNotification('error', 'Error', response.error || 'Error al crear el cliente');
+            }
+        })
+        .fail(function() {
+            showNotification('error', 'Error', 'Error de conexión al crear el cliente');
+        })
+        .always(function() {
+            hideLoading();
+        });
+    }
 </script>
 {% endblock %}

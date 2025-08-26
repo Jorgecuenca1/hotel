@@ -94,7 +94,7 @@ class Reserva(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, verbose_name="Cliente")
     habitacion = models.ForeignKey(Habitacion, on_delete=models.CASCADE, verbose_name="Habitación")
     fecha_entrada = models.DateField(verbose_name="Fecha de Entrada")
-    fecha_salida = models.DateField(verbose_name="Fecha de Salida")
+    fecha_salida = models.DateField(null=True, blank=True, verbose_name="Fecha de Salida")
     numero_huespedes = models.PositiveIntegerField(default=1, verbose_name="Número de Huéspedes")
     estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente', verbose_name="Estado")
     precio_total = models.DecimalField(
@@ -125,6 +125,15 @@ class Reserva(models.Model):
             dias = (self.fecha_salida - self.fecha_entrada).days
             if dias > 0:
                 self.precio_total = self.habitacion.tipo.precio_por_noche * dias
+        else:
+            # Para reservas indefinidas, cobrar al menos una noche desde el inicio
+            from datetime import date
+            if self.fecha_entrada:
+                # Calcular días desde la entrada hasta hoy (mínimo 1 día)
+                dias_transcurridos = max(1, (date.today() - self.fecha_entrada).days + 1)
+                self.precio_total = self.habitacion.tipo.precio_por_noche * dias_transcurridos
+            else:
+                self.precio_total = None
         
         super().save(*args, **kwargs)
     
@@ -133,6 +142,73 @@ class Reserva(models.Model):
         if self.fecha_entrada and self.fecha_salida:
             return (self.fecha_salida - self.fecha_entrada).days
         return 0
+    
+    @property
+    def es_indefinida(self):
+        """Indica si la reserva tiene fecha de salida indefinida"""
+        return self.fecha_salida is None
+    
+    def calcular_precio_hasta_fecha(self, fecha_hasta=None):
+        """Calcula el precio desde la entrada hasta una fecha específica"""
+        from datetime import date
+        if not fecha_hasta:
+            fecha_hasta = date.today()
+        
+        if self.fecha_entrada:
+            dias = (fecha_hasta - self.fecha_entrada).days
+            if dias > 0:
+                return self.habitacion.tipo.precio_por_noche * dias
+        return 0
+    
+    @property
+    def subtotal_consumos(self):
+        """Calcula el subtotal de consumos"""
+        return sum(c.subtotal for c in self.consumohabitacion_set.all())
+    
+    @property
+    def subtotal_ajustes(self):
+        """Calcula el subtotal de ajustes (extras - descuentos)"""
+        from decimal import Decimal
+        subtotal_base = (self.precio_total or 0) + self.subtotal_consumos
+        total_ajustes = Decimal('0')
+        
+        for ajuste in self.ajustes_precio.filter(activo=True):
+            monto_ajuste = ajuste.calcular_monto_final(subtotal_base)
+            if ajuste.tipo == 'extra':
+                total_ajustes += monto_ajuste
+            else:  # descuento
+                total_ajustes -= monto_ajuste
+        
+        return total_ajustes
+    
+    @property
+    def total_con_ajustes(self):
+        """Calcula el total incluyendo habitación, consumos y ajustes"""
+        # Para reservas indefinidas, actualizar precio antes de calcular total
+        if self.es_indefinida:
+            self.actualizar_precio_indefinida()
+        
+        return (self.precio_total or 0) + self.subtotal_consumos + self.subtotal_ajustes
+    
+    def actualizar_precio_indefinida(self):
+        """Actualiza el precio para reservas indefinidas basado en días transcurridos"""
+        if self.es_indefinida and self.fecha_entrada:
+            from datetime import date
+            dias_transcurridos = max(1, (date.today() - self.fecha_entrada).days + 1)
+            nuevo_precio = self.habitacion.tipo.precio_por_noche * dias_transcurridos
+            if self.precio_total != nuevo_precio:
+                self.precio_total = nuevo_precio
+                self.save()
+    
+    @property
+    def saldo_pendiente(self):
+        """Calcula el saldo pendiente considerando ajustes"""
+        # Para reservas indefinidas, actualizar precio antes de calcular saldo
+        if self.es_indefinida:
+            self.actualizar_precio_indefinida()
+        
+        total_pagos = sum(p.monto for p in self.pago_set.all())
+        return self.total_con_ajustes - total_pagos
 
 
 class CategoriaProducto(models.Model):
@@ -253,6 +329,65 @@ class Pago(models.Model):
         super().save(*args, **kwargs)
 
 
+class AjustePrecio(models.Model):
+    """Ajustes de precio para reservas (extras y descuentos)"""
+    TIPOS_AJUSTE = [
+        ('extra', 'Cargo Extra'),
+        ('descuento', 'Descuento'),
+    ]
+    
+    reserva = models.ForeignKey(Reserva, on_delete=models.CASCADE, verbose_name="Reserva", related_name='ajustes_precio')
+    tipo = models.CharField(max_length=20, choices=TIPOS_AJUSTE, verbose_name="Tipo de Ajuste")
+    concepto = models.CharField(max_length=200, verbose_name="Concepto")
+    monto = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        validators=[MinValueValidator(Decimal('0.01'))],
+        verbose_name="Monto"
+    )
+    porcentaje = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        verbose_name="Porcentaje"
+    )
+    es_porcentaje = models.BooleanField(default=False, verbose_name="¿Es porcentaje?")
+    fecha_creacion = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Creación")
+    usuario_creacion = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, verbose_name="Usuario que Creó")
+    activo = models.BooleanField(default=True, verbose_name="Activo")
+    
+    class Meta:
+        verbose_name = "Ajuste de Precio"
+        verbose_name_plural = "Ajustes de Precio"
+        ordering = ['-fecha_creacion']
+    
+    def __str__(self):
+        signo = '+' if self.tipo == 'extra' else '-'
+        if self.es_porcentaje:
+            return f"{signo}{self.porcentaje}% - {self.concepto}"
+        else:
+            return f"{signo}${self.monto} - {self.concepto}"
+    
+    def calcular_monto_final(self, subtotal_base):
+        """Calcula el monto final del ajuste basado en el subtotal"""
+        if self.es_porcentaje:
+            return subtotal_base * (self.porcentaje / 100)
+        else:
+            return self.monto
+    
+    @property
+    def monto_calculado(self):
+        """Retorna el monto calculado para mostrar en la interfaz"""
+        if self.es_porcentaje and self.reserva:
+            subtotal = (self.reserva.precio_total or 0) + sum(
+                c.subtotal for c in ConsumoHabitacion.objects.filter(reserva=self.reserva)
+            )
+            return self.calcular_monto_final(subtotal)
+        return self.monto
+
+
 class Factura(models.Model):
     """Facturas generadas"""
     numero_factura = models.CharField(max_length=20, unique=True, verbose_name="Número de Factura")
@@ -260,6 +395,7 @@ class Factura(models.Model):
     fecha_emision = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Emisión")
     subtotal_habitacion = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Subtotal Habitación")
     subtotal_consumos = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Subtotal Consumos")
+    subtotal_ajustes = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Subtotal Ajustes")
     impuestos = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Impuestos")
     total = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Total")
     observaciones = models.TextField(blank=True, verbose_name="Observaciones")
@@ -284,8 +420,22 @@ class Factura(models.Model):
         consumos = ConsumoHabitacion.objects.filter(reserva=self.reserva)
         self.subtotal_consumos = sum(consumo.subtotal for consumo in consumos)
         
+        # Calcular ajustes de precio
+        subtotal_base = self.subtotal_habitacion + self.subtotal_consumos
+        ajustes = AjustePrecio.objects.filter(reserva=self.reserva, activo=True)
+        
+        total_ajustes = Decimal('0')
+        for ajuste in ajustes:
+            monto_ajuste = ajuste.calcular_monto_final(subtotal_base)
+            if ajuste.tipo == 'extra':
+                total_ajustes += monto_ajuste
+            else:  # descuento
+                total_ajustes -= monto_ajuste
+        
+        self.subtotal_ajustes = total_ajustes
+        
         # Calcular impuestos (ejemplo: 16% IVA)
-        subtotal_antes_impuestos = self.subtotal_habitacion + self.subtotal_consumos
+        subtotal_antes_impuestos = subtotal_base + total_ajustes
         self.impuestos = subtotal_antes_impuestos * Decimal('0.16')
         
         self.total = subtotal_antes_impuestos + self.impuestos

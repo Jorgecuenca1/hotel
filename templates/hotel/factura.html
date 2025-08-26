@@ -46,6 +46,12 @@
                         <td class="text-end"><strong>Reserva:</strong></td>
                         <td>{{ factura.reserva.numero_reserva }}</td>
                     </tr>
+                    <tr>
+                        <td class="text-end"><strong>Estado:</strong></td>
+                        <td>
+                            <span class="badge bg-{{ estado_clase }}">{{ estado_texto }}</span>
+                        </td>
+                    </tr>
                 </table>
             </div>
         </div>
@@ -72,8 +78,20 @@
                 <h5><i class="fas fa-bed"></i> Información de la Estancia</h5>
                 <p class="mb-1"><strong>Habitación:</strong> {{ factura.reserva.habitacion.numero }} - {{ factura.reserva.habitacion.tipo.nombre }}</p>
                 <p class="mb-1"><strong>Entrada:</strong> {{ factura.reserva.fecha_entrada|date:"d/m/Y" }}</p>
-                <p class="mb-1"><strong>Salida:</strong> {{ factura.reserva.fecha_salida|date:"d/m/Y" }}</p>
-                <p class="mb-1"><strong>Noches:</strong> {{ factura.reserva.dias_estancia }}</p>
+                <p class="mb-1"><strong>Salida:</strong> 
+                    {% if factura.reserva.fecha_salida %}
+                        {{ factura.reserva.fecha_salida|date:"d/m/Y" }}
+                    {% else %}
+                        <span class="badge bg-warning">Indefinida</span>
+                    {% endif %}
+                </p>
+                <p class="mb-1"><strong>Noches:</strong> 
+                    {% if factura.reserva.fecha_salida %}
+                        {{ factura.reserva.dias_estancia }}
+                    {% else %}
+                        <span class="text-muted">Por días transcurridos</span>
+                    {% endif %}
+                </p>
                 <p class="mb-0"><strong>Huéspedes:</strong> {{ factura.reserva.numero_huespedes }}</p>
             </div>
         </div>
@@ -95,9 +113,21 @@
                     <tr>
                         <td>
                             <strong>Hospedaje - {{ factura.reserva.habitacion.tipo.nombre }}</strong><br>
-                            <small class="text-muted">Del {{ factura.reserva.fecha_entrada|date:"d/m/Y" }} al {{ factura.reserva.fecha_salida|date:"d/m/Y" }}</small>
+                            <small class="text-muted">
+                                {% if factura.reserva.fecha_salida %}
+                                    Del {{ factura.reserva.fecha_entrada|date:"d/m/Y" }} al {{ factura.reserva.fecha_salida|date:"d/m/Y" }}
+                                {% else %}
+                                    Desde {{ factura.reserva.fecha_entrada|date:"d/m/Y" }} (Reserva indefinida)
+                                {% endif %}
+                            </small>
                         </td>
-                        <td class="text-center">{{ factura.reserva.dias_estancia }} noche(s)</td>
+                        <td class="text-center">
+                            {% if factura.reserva.fecha_salida %}
+                                {{ factura.reserva.dias_estancia }} noche(s)
+                            {% else %}
+                                Días transcurridos
+                            {% endif %}
+                        </td>
                         <td class="text-end">${{ factura.reserva.habitacion.tipo.precio_por_noche|floatformat:2 }}</td>
                         <td class="text-end">${{ factura.subtotal_habitacion|floatformat:2 }}</td>
                     </tr>
@@ -112,6 +142,37 @@
                         <td class="text-center">{{ consumo.cantidad }}</td>
                         <td class="text-end">${{ consumo.precio_unitario|floatformat:2 }}</td>
                         <td class="text-end">${{ consumo.subtotal|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+
+                    <!-- Ajustes de precio -->
+                    {% for ajuste in ajustes %}
+                    <tr class="{% if ajuste.tipo == 'extra' %}table-success{% else %}table-danger{% endif %}">
+                        <td>
+                            <strong>
+                                {% if ajuste.tipo == 'extra' %}
+                                    <i class="fas fa-plus text-success"></i> {{ ajuste.concepto }}
+                                {% else %}
+                                    <i class="fas fa-minus text-danger"></i> {{ ajuste.concepto }} (Descuento)
+                                {% endif %}
+                            </strong><br>
+                            <small class="text-muted">{{ ajuste.fecha_creacion|date:"d/m/Y H:i" }}</small>
+                        </td>
+                        <td class="text-center">1</td>
+                        <td class="text-end">
+                            {% if ajuste.es_porcentaje %}
+                                {{ ajuste.porcentaje }}%
+                            {% else %}
+                                ${{ ajuste.monto|floatformat:2 }}
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if ajuste.tipo == 'extra' %}
+                                +${{ ajuste.monto_calculado|floatformat:2 }}
+                            {% else %}
+                                -${{ ajuste.monto_calculado|floatformat:2 }}
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -131,25 +192,80 @@
                         <td class="text-end"><strong>Subtotal Consumos:</strong></td>
                         <td class="text-end">${{ factura.subtotal_consumos|floatformat:2 }}</td>
                     </tr>
+                    {% if factura.subtotal_ajustes != 0 %}
+                    <tr>
+                        <td class="text-end"><strong>Ajustes:</strong></td>
+                        <td class="text-end {% if factura.subtotal_ajustes >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {% if factura.subtotal_ajustes >= 0 %}+{% endif %} ${{ factura.subtotal_ajustes|floatformat:2 }}
+                        </td>
+                    </tr>
+                    {% endif %}
                     <tr>
                         <td class="text-end"><strong>Subtotal:</strong></td>
-                        <td class="text-end">${{ factura.subtotal_habitacion|add:factura.subtotal_consumos|floatformat:2 }}</td>
+                        <td class="text-end">${{ factura.reserva.total_con_ajustes|floatformat:2 }}</td>
                     </tr>
                     <tr>
                         <td class="text-end"><strong>IVA (16%):</strong></td>
                         <td class="text-end">${{ factura.impuestos|floatformat:2 }}</td>
                     </tr>
                     <tr class="table-primary">
-                        <td class="text-end"><strong>TOTAL:</strong></td>
+                        <td class="text-end"><strong>TOTAL A PAGAR:</strong></td>
                         <td class="text-end"><strong>${{ factura.total|floatformat:2 }}</strong></td>
                     </tr>
                 </table>
             </div>
         </div>
 
-        <!-- Información de pagos -->
-        {% if factura.reserva.pago_set.all %}
+        <!-- Estado de pago y resumen -->
         <hr>
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="alert alert-{{ estado_clase }}">
+                    <h5 class="mb-2">
+                        <i class="fas fa-{% if estado_pago == 'pagado' %}check-circle{% elif estado_pago == 'parcial' %}exclamation-triangle{% else %}times-circle{% endif %}"></i>
+                        {{ estado_texto }}
+                    </h5>
+                    {% if estado_pago == 'no_pagado' %}
+                        <p class="mb-0">Esta factura <strong>NO HA SIDO PAGADA</strong>.</p>
+                        <p class="mb-0">Monto total adeudado: <strong>${{ factura.total|floatformat:2 }}</strong></p>
+                    {% elif estado_pago == 'parcial' %}
+                        <p class="mb-0">Esta factura ha sido <strong>PAGADA PARCIALMENTE</strong>.</p>
+                        <p class="mb-0">Monto pagado: <strong>${{ total_pagado|floatformat:2 }}</strong></p>
+                        <p class="mb-0">Saldo pendiente: <strong>${{ saldo_pendiente|floatformat:2 }}</strong></p>
+                    {% else %}
+                        <p class="mb-0">Esta factura ha sido <strong>PAGADA COMPLETAMENTE</strong>.</p>
+                        <p class="mb-0">Monto total pagado: <strong>${{ total_pagado|floatformat:2 }}</strong></p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Resumen de Pago</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <span>Total Factura:</span>
+                            <strong>${{ factura.total|floatformat:2 }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Total Pagado:</span>
+                            <strong class="text-success">${{ total_pagado|floatformat:2 }}</strong>
+                        </div>
+                        <hr class="my-2">
+                        <div class="d-flex justify-content-between">
+                            <span><strong>Saldo Pendiente:</strong></span>
+                            <strong class="{% if saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">
+                                ${{ saldo_pendiente|floatformat:2 }}
+                            </strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historial de pagos -->
+        {% if factura.reserva.pago_set.all %}
         <h5><i class="fas fa-credit-card"></i> Historial de Pagos</h5>
         <div class="table-responsive">
             <table class="table table-sm">
@@ -173,13 +289,12 @@
                     </tr>
                     {% endfor %}
                 </tbody>
-                <tfoot>
-                    <tr class="table-success">
-                        <td colspan="4" class="text-end"><strong>Total Pagado:</strong></td>
-                        <td class="text-end"><strong>${{ total_pagado|floatformat:2 }}</strong></td>
-                    </tr>
-                </tfoot>
             </table>
+        </div>
+        {% else %}
+        <div class="alert alert-warning">
+            <h5><i class="fas fa-exclamation-triangle"></i> Sin Pagos Registrados</h5>
+            <p class="mb-0">No se han registrado pagos para esta factura.</p>
         </div>
         {% endif %}
 

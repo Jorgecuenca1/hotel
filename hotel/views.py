@@ -3,6 +3,7 @@ from django.http import JsonResponse, HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Sum, F
+from django.db import models
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 from django.core.paginator import Paginator
@@ -13,7 +14,7 @@ from decimal import Decimal
 
 from .models import (
     TipoHabitacion, Habitacion, Cliente, Reserva, 
-    CategoriaProducto, Producto, ConsumoHabitacion, Pago, Factura
+    CategoriaProducto, Producto, ConsumoHabitacion, Pago, Factura, AjustePrecio
 )
 
 
@@ -413,17 +414,35 @@ def reserva_create(request):
             
             # Verificar disponibilidad
             fecha_entrada = datetime.strptime(data['fecha_entrada'], '%Y-%m-%d').date()
-            fecha_salida = datetime.strptime(data['fecha_salida'], '%Y-%m-%d').date()
+            fecha_salida = None
             
-            conflictos = Reserva.objects.filter(
-                habitacion=habitacion,
-                estado__in=['confirmada', 'en_curso'],
-                fecha_entrada__lt=fecha_salida,
-                fecha_salida__gt=fecha_entrada
-            )
-            
-            if conflictos.exists():
-                return JsonResponse({'success': False, 'error': 'Habitación no disponible en esas fechas'})
+            # Manejar fecha de salida (puede ser indefinida)
+            if data.get('fecha_salida') and data['fecha_salida'].strip():
+                fecha_salida = datetime.strptime(data['fecha_salida'], '%Y-%m-%d').date()
+                
+                # Verificar conflictos solo si hay fecha de salida definida
+                conflictos = Reserva.objects.filter(
+                    habitacion=habitacion,
+                    estado__in=['confirmada', 'en_curso'],
+                    fecha_entrada__lt=fecha_salida,
+                    fecha_salida__gt=fecha_entrada
+                ).exclude(fecha_salida__isnull=True)
+                
+                if conflictos.exists():
+                    return JsonResponse({'success': False, 'error': 'Habitación no disponible en esas fechas'})
+            else:
+                # Para reservas indefinidas, verificar que no haya conflictos actuales
+                conflictos_actuales = Reserva.objects.filter(
+                    habitacion=habitacion,
+                    estado__in=['confirmada', 'en_curso'],
+                    fecha_entrada__lte=fecha_entrada
+                ).filter(
+                    models.Q(fecha_salida__isnull=True) | 
+                    models.Q(fecha_salida__gt=fecha_entrada)
+                )
+                
+                if conflictos_actuales.exists():
+                    return JsonResponse({'success': False, 'error': 'Habitación no disponible para reserva indefinida'})
             
             reserva = Reserva.objects.create(
                 cliente=cliente,
@@ -456,24 +475,37 @@ def reserva_create(request):
 
 
 def reserva_detail(request, reserva_id):
-    """Detalle de reserva con consumos y pagos"""
+    """Detalle de reserva con consumos, pagos y ajustes"""
     reserva = get_object_or_404(Reserva, id=reserva_id)
     consumos = ConsumoHabitacion.objects.filter(reserva=reserva).select_related('producto')
     pagos = Pago.objects.filter(reserva=reserva)
+    ajustes = AjustePrecio.objects.filter(reserva=reserva, activo=True)
     
-    total_consumos = sum(consumo.subtotal for consumo in consumos)
+    total_consumos = reserva.subtotal_consumos
     total_pagado = sum(pago.monto for pago in pagos)
-    total_reserva = (reserva.precio_total or 0) + total_consumos
-    saldo_pendiente = total_reserva - total_pagado
+    
+    # Serializar ajustes para JavaScript
+    ajustes_json = []
+    for ajuste in ajustes:
+        ajustes_json.append({
+            'id': ajuste.id,
+            'tipo': ajuste.tipo,
+            'concepto': ajuste.concepto,
+            'monto': float(ajuste.monto),
+            'porcentaje': float(ajuste.porcentaje) if ajuste.porcentaje else None,
+            'es_porcentaje': ajuste.es_porcentaje,
+            'monto_calculado': float(ajuste.monto_calculado),
+            'fecha_creacion': ajuste.fecha_creacion.strftime('%d/%m/%Y %H:%M')
+        })
     
     context = {
         'reserva': reserva,
         'consumos': consumos,
         'pagos': pagos,
+        'ajustes': ajustes,
+        'ajustes_json': json.dumps(ajustes_json),
         'total_consumos': total_consumos,
         'total_pagado': total_pagado,
-        'total_reserva': total_reserva,
-        'saldo_pendiente': saldo_pendiente,
     }
     return render(request, 'hotel/reserva_detail.html', context)
 
@@ -529,13 +561,11 @@ def agregar_pago(request, reserva_id):
     """Página para agregar pago a una reserva"""
     reserva = get_object_or_404(Reserva, id=reserva_id)
     
-    # Calcular saldo pendiente
-    consumos = ConsumoHabitacion.objects.filter(reserva=reserva)
+    # Calcular saldo pendiente usando los nuevos métodos que incluyen ajustes
     pagos = Pago.objects.filter(reserva=reserva)
-    total_consumos = sum(consumo.subtotal for consumo in consumos)
     total_pagado = sum(pago.monto for pago in pagos)
-    total_reserva = (reserva.precio_total or 0) + total_consumos
-    saldo_pendiente = total_reserva - total_pagado
+    total_reserva = reserva.total_con_ajustes  # Incluye habitación + consumos + ajustes
+    saldo_pendiente = reserva.saldo_pendiente  # Usa el método que incluye ajustes
     
     if request.method == 'POST':
         monto = request.POST.get('monto')
@@ -683,13 +713,34 @@ def generar_factura(request, reserva_id):
             usuario_emision=request.user if request.user.is_authenticated else None
         )
     
-    # Calcular total pagado
+    # Calcular totales y estado de pago
     pagos = Pago.objects.filter(reserva=reserva)
+    ajustes = AjustePrecio.objects.filter(reserva=reserva, activo=True)
     total_pagado = sum(pago.monto for pago in pagos)
+    saldo_pendiente = reserva.saldo_pendiente
+    
+    # Determinar estado de pago
+    if saldo_pendiente <= 0:
+        estado_pago = 'pagado'
+        estado_texto = 'PAGADO COMPLETAMENTE'
+        estado_clase = 'success'
+    elif total_pagado > 0:
+        estado_pago = 'parcial'
+        estado_texto = 'PAGO PARCIAL'
+        estado_clase = 'warning'
+    else:
+        estado_pago = 'no_pagado'
+        estado_texto = 'NO PAGADO'
+        estado_clase = 'danger'
     
     context = {
         'factura': factura,
-        'total_pagado': total_pagado
+        'ajustes': ajustes,
+        'total_pagado': total_pagado,
+        'saldo_pendiente': saldo_pendiente,
+        'estado_pago': estado_pago,
+        'estado_texto': estado_texto,
+        'estado_clase': estado_clase,
     }
     
     return render(request, 'hotel/factura.html', context)
@@ -764,6 +815,8 @@ def exportar_contabilidad(request):
 def reportes(request):
     """Vista de reportes"""
     # Datos para gráficos y estadísticas
+    clientes = Cliente.objects.all().order_by('nombre', 'apellido')
+    
     context = {
         'ocupacion_hoy': Habitacion.objects.filter(estado='ocupada').count(),
         'total_habitaciones': Habitacion.objects.count(),
@@ -775,8 +828,519 @@ def reportes(request):
             fecha_pago__month=timezone.now().month,
             fecha_pago__year=timezone.now().year
         ).aggregate(total=Sum('monto'))['total'] or 0,
+        'clientes': clientes,
     }
     return render(request, 'hotel/reportes.html', context)
+
+
+# === REPORTES PDF ===
+def reporte_todas_reservas_pdf(request):
+    """Generar PDF con todas las reservas e información completa"""
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.units import inch
+    from io import BytesIO
+    
+    # Crear buffer para el PDF
+    buffer = BytesIO()
+    
+    # Crear documento PDF
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+    
+    # Obtener todas las reservas con información relacionada
+    reservas = Reserva.objects.select_related(
+        'cliente', 'habitacion__tipo'
+    ).prefetch_related(
+        'pago_set', 'consumohabitacion_set__producto', 'ajustes_precio'
+    ).order_by('-fecha_creacion')
+    
+    # Estilos
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=30,
+        alignment=1  # Centrado
+    )
+    
+    # Contenido del PDF
+    story = []
+    
+    # Título
+    title = Paragraph("REPORTE COMPLETO DE RESERVAS", title_style)
+    story.append(title)
+    story.append(Spacer(1, 12))
+    
+    # Información general
+    fecha_reporte = timezone.now().strftime('%d/%m/%Y %H:%M')
+    info_general = Paragraph(f"<b>Fecha del reporte:</b> {fecha_reporte}<br/><b>Total de reservas:</b> {reservas.count()}", styles['Normal'])
+    story.append(info_general)
+    story.append(Spacer(1, 20))
+    
+    # Procesar cada reserva
+    for reserva in reservas:
+        # Información básica de la reserva
+        story.append(Paragraph(f"<b>RESERVA {reserva.numero_reserva}</b>", styles['Heading2']))
+        
+        # Datos del cliente
+        cliente_data = [
+            ['<b>INFORMACIÓN DEL CLIENTE</b>', ''],
+            ['Nombre completo:', reserva.cliente.nombre_completo],
+            ['Documento:', f"{reserva.cliente.get_tipo_documento_display()}: {reserva.cliente.numero_documento}"],
+            ['Teléfono:', reserva.cliente.telefono or 'No registrado'],
+            ['Email:', reserva.cliente.email or 'No registrado'],
+            ['Dirección:', reserva.cliente.direccion or 'No registrada'],
+        ]
+        
+        cliente_table = Table(cliente_data, colWidths=[2*inch, 3*inch])
+        cliente_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), colors.lightgrey),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(cliente_table)
+        story.append(Spacer(1, 12))
+        
+        # Datos de la reserva
+        fecha_salida = reserva.fecha_salida.strftime('%d/%m/%Y') if reserva.fecha_salida else 'Indefinida'
+        dias_estancia = reserva.dias_estancia if reserva.fecha_salida else 'Por definir'
+        
+        reserva_data = [
+            ['<b>INFORMACIÓN DE LA RESERVA</b>', ''],
+            ['Habitación:', f"{reserva.habitacion.numero} - {reserva.habitacion.tipo.nombre}"],
+            ['Fecha entrada:', reserva.fecha_entrada.strftime('%d/%m/%Y')],
+            ['Fecha salida:', fecha_salida],
+            ['Días de estancia:', str(dias_estancia)],
+            ['Número de huéspedes:', str(reserva.numero_huespedes)],
+            ['Estado:', reserva.get_estado_display()],
+            ['Precio habitación:', f"${reserva.precio_total or 0:,.2f}"],
+        ]
+        
+        reserva_table = Table(reserva_data, colWidths=[2*inch, 3*inch])
+        reserva_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), colors.lightblue),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(reserva_table)
+        story.append(Spacer(1, 12))
+        
+        # Consumos
+        consumos = reserva.consumohabitacion_set.all()
+        if consumos:
+            story.append(Paragraph("<b>CONSUMOS</b>", styles['Heading3']))
+            consumos_data = [['Producto', 'Cantidad', 'Precio Unit.', 'Subtotal', 'Fecha']]
+            
+            for consumo in consumos:
+                consumos_data.append([
+                    consumo.producto.nombre,
+                    str(consumo.cantidad),
+                    f"${consumo.precio_unitario:,.2f}",
+                    f"${consumo.subtotal:,.2f}",
+                    consumo.fecha_consumo.strftime('%d/%m/%Y')
+                ])
+            
+            consumos_table = Table(consumos_data, colWidths=[1.5*inch, 0.8*inch, 1*inch, 1*inch, 1*inch])
+            consumos_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgreen),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            story.append(consumos_table)
+            story.append(Spacer(1, 12))
+        
+        # Ajustes de precio
+        ajustes = reserva.ajustes_precio.filter(activo=True)
+        if ajustes:
+            story.append(Paragraph("<b>AJUSTES DE PRECIO</b>", styles['Heading3']))
+            ajustes_data = [['Tipo', 'Concepto', 'Valor', 'Monto', 'Fecha']]
+            
+            for ajuste in ajustes:
+                tipo_display = 'Extra' if ajuste.tipo == 'extra' else 'Descuento'
+                valor_display = f"{ajuste.porcentaje}%" if ajuste.es_porcentaje else f"${ajuste.monto:,.2f}"
+                
+                ajustes_data.append([
+                    tipo_display,
+                    ajuste.concepto,
+                    valor_display,
+                    f"${ajuste.monto_calculado:,.2f}",
+                    ajuste.fecha_creacion.strftime('%d/%m/%Y')
+                ])
+            
+            ajustes_table = Table(ajustes_data, colWidths=[1*inch, 1.5*inch, 1*inch, 1*inch, 1*inch])
+            ajustes_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightyellow),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            story.append(ajustes_table)
+            story.append(Spacer(1, 12))
+        
+        # Información financiera
+        pagos = reserva.pago_set.all()
+        total_pagado = sum(p.monto for p in pagos)
+        
+        financiera_data = [
+            ['<b>RESUMEN FINANCIERO</b>', ''],
+            ['Subtotal habitación:', f"${reserva.precio_total or 0:,.2f}"],
+            ['Subtotal consumos:', f"${reserva.subtotal_consumos:,.2f}"],
+            ['Subtotal ajustes:', f"${reserva.subtotal_ajustes:,.2f}"],
+            ['<b>Total con ajustes:</b>', f"<b>${reserva.total_con_ajustes:,.2f}</b>"],
+            ['Total pagado:', f"${total_pagado:,.2f}"],
+            ['<b>Saldo pendiente:</b>', f"<b>${reserva.saldo_pendiente:,.2f}</b>"],
+        ]
+        
+        financiera_table = Table(financiera_data, colWidths=[2*inch, 3*inch])
+        financiera_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), colors.lightcoral),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(financiera_table)
+        story.append(Spacer(1, 12))
+        
+        # Pagos realizados
+        if pagos:
+            story.append(Paragraph("<b>HISTORIAL DE PAGOS</b>", styles['Heading3']))
+            pagos_data = [['Fecha', 'Método', 'Tipo', 'Monto', 'Referencia']]
+            
+            for pago in pagos:
+                pagos_data.append([
+                    pago.fecha_pago.strftime('%d/%m/%Y'),
+                    pago.get_metodo_pago_display(),
+                    pago.get_tipo_pago_display(),
+                    f"${pago.monto:,.2f}",
+                    pago.referencia or 'N/A'
+                ])
+            
+            pagos_table = Table(pagos_data, colWidths=[1*inch, 1.2*inch, 1*inch, 1*inch, 1.3*inch])
+            pagos_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightsteelblue),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            story.append(pagos_table)
+        
+        # Separador entre reservas
+        story.append(Spacer(1, 30))
+        story.append(Paragraph("─" * 80, styles['Normal']))
+        story.append(Spacer(1, 20))
+    
+    # Generar PDF
+    doc.build(story)
+    
+    # Preparar respuesta
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="reporte_todas_reservas_{timezone.now().strftime("%Y%m%d_%H%M")}.pdf"'
+    
+    return response
+
+
+def reporte_por_cliente_pdf(request):
+    """Generar PDF filtrado por cliente específico"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.units import inch
+    from io import BytesIO
+    
+    cliente_id = request.GET.get('cliente_id')
+    if not cliente_id:
+        return HttpResponse("Cliente no especificado", status=400)
+    
+    try:
+        cliente = Cliente.objects.get(id=cliente_id)
+    except Cliente.DoesNotExist:
+        return HttpResponse("Cliente no encontrado", status=404)
+    
+    # Crear buffer para el PDF
+    buffer = BytesIO()
+    
+    # Crear documento PDF
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+    
+    # Obtener reservas del cliente
+    reservas = Reserva.objects.filter(cliente=cliente).select_related(
+        'habitacion__tipo'
+    ).prefetch_related(
+        'pago_set', 'consumohabitacion_set__producto', 'ajustes_precio'
+    ).order_by('-fecha_creacion')
+    
+    # Estilos
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=30,
+        alignment=1  # Centrado
+    )
+    
+    # Contenido del PDF
+    story = []
+    
+    # Título
+    title = Paragraph(f"REPORTE DE RESERVAS - {cliente.nombre_completo.upper()}", title_style)
+    story.append(title)
+    story.append(Spacer(1, 12))
+    
+    # Información del cliente
+    fecha_reporte = timezone.now().strftime('%d/%m/%Y %H:%M')
+    info_cliente = f"""
+    <b>Fecha del reporte:</b> {fecha_reporte}<br/>
+    <b>Cliente:</b> {cliente.nombre_completo}<br/>
+    <b>Documento:</b> {cliente.get_tipo_documento_display()}: {cliente.numero_documento}<br/>
+    <b>Teléfono:</b> {cliente.telefono or 'No registrado'}<br/>
+    <b>Email:</b> {cliente.email or 'No registrado'}<br/>
+    <b>Total de reservas:</b> {reservas.count()}
+    """
+    
+    story.append(Paragraph(info_cliente, styles['Normal']))
+    story.append(Spacer(1, 20))
+    
+    if not reservas:
+        story.append(Paragraph("No se encontraron reservas para este cliente.", styles['Normal']))
+    else:
+        # Resumen financiero del cliente
+        total_gastado = sum(r.total_con_ajustes for r in reservas)
+        total_pagado = sum(sum(p.monto for p in r.pago_set.all()) for r in reservas)
+        saldo_pendiente_total = total_gastado - total_pagado
+        
+        resumen_data = [
+            ['<b>RESUMEN FINANCIERO DEL CLIENTE</b>', ''],
+            ['Total gastado:', f"${total_gastado:,.2f}"],
+            ['Total pagado:', f"${total_pagado:,.2f}"],
+            ['Saldo pendiente total:', f"${saldo_pendiente_total:,.2f}"],
+        ]
+        
+        resumen_table = Table(resumen_data, colWidths=[3*inch, 2*inch])
+        resumen_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), colors.lightcoral),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(resumen_table)
+        story.append(Spacer(1, 20))
+        
+        # Procesar cada reserva (versión resumida)
+        for reserva in reservas:
+            story.append(Paragraph(f"<b>RESERVA {reserva.numero_reserva}</b>", styles['Heading2']))
+            
+            fecha_salida = reserva.fecha_salida.strftime('%d/%m/%Y') if reserva.fecha_salida else 'Indefinida'
+            pagos = reserva.pago_set.all()
+            total_pagado_reserva = sum(p.monto for p in pagos)
+            
+            reserva_data = [
+                ['Habitación:', f"{reserva.habitacion.numero} - {reserva.habitacion.tipo.nombre}"],
+                ['Fechas:', f"{reserva.fecha_entrada.strftime('%d/%m/%Y')} - {fecha_salida}"],
+                ['Estado:', reserva.get_estado_display()],
+                ['Total:', f"${reserva.total_con_ajustes:,.2f}"],
+                ['Pagado:', f"${total_pagado_reserva:,.2f}"],
+                ['Pendiente:', f"${reserva.saldo_pendiente:,.2f}"],
+            ]
+            
+            reserva_table = Table(reserva_data, colWidths=[1.5*inch, 3.5*inch])
+            reserva_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.lightblue),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            story.append(reserva_table)
+            story.append(Spacer(1, 15))
+    
+    # Generar PDF
+    doc.build(story)
+    
+    # Preparar respuesta
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="reporte_cliente_{cliente.numero_documento}_{timezone.now().strftime("%Y%m%d_%H%M")}.pdf"'
+    
+    return response
+
+
+def reporte_por_fecha_pdf(request):
+    """Generar PDF filtrado por rango de fechas"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.units import inch
+    from io import BytesIO
+    from datetime import datetime
+    
+    fecha_desde = request.GET.get('fecha_desde')
+    fecha_hasta = request.GET.get('fecha_hasta')
+    
+    if not fecha_desde or not fecha_hasta:
+        return HttpResponse("Fechas no especificadas", status=400)
+    
+    try:
+        fecha_desde = datetime.strptime(fecha_desde, '%Y-%m-%d').date()
+        fecha_hasta = datetime.strptime(fecha_hasta, '%Y-%m-%d').date()
+    except ValueError:
+        return HttpResponse("Formato de fecha inválido", status=400)
+    
+    # Crear buffer para el PDF
+    buffer = BytesIO()
+    
+    # Crear documento PDF
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+    
+    # Obtener reservas en el rango de fechas
+    reservas = Reserva.objects.filter(
+        fecha_entrada__range=[fecha_desde, fecha_hasta]
+    ).select_related(
+        'cliente', 'habitacion__tipo'
+    ).prefetch_related(
+        'pago_set', 'consumohabitacion_set__producto', 'ajustes_precio'
+    ).order_by('-fecha_creacion')
+    
+    # Estilos
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=30,
+        alignment=1  # Centrado
+    )
+    
+    # Contenido del PDF
+    story = []
+    
+    # Título
+    title = Paragraph(f"REPORTE POR FECHAS: {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}", title_style)
+    story.append(title)
+    story.append(Spacer(1, 12))
+    
+    # Información general
+    fecha_reporte = timezone.now().strftime('%d/%m/%Y %H:%M')
+    info_general = f"""
+    <b>Fecha del reporte:</b> {fecha_reporte}<br/>
+    <b>Período:</b> {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}<br/>
+    <b>Total de reservas:</b> {reservas.count()}
+    """
+    
+    story.append(Paragraph(info_general, styles['Normal']))
+    story.append(Spacer(1, 20))
+    
+    if not reservas:
+        story.append(Paragraph("No se encontraron reservas en el período especificado.", styles['Normal']))
+    else:
+        # Estadísticas del período
+        total_ingresos = sum(r.total_con_ajustes for r in reservas)
+        total_pagado = sum(sum(p.monto for p in r.pago_set.all()) for r in reservas)
+        saldo_pendiente_total = total_ingresos - total_pagado
+        
+        # Contar por estado
+        estados_count = {}
+        for reserva in reservas:
+            estado = reserva.get_estado_display()
+            estados_count[estado] = estados_count.get(estado, 0) + 1
+        
+        estadisticas_data = [
+            ['<b>ESTADÍSTICAS DEL PERÍODO</b>', ''],
+            ['Total de ingresos:', f"${total_ingresos:,.2f}"],
+            ['Total pagado:', f"${total_pagado:,.2f}"],
+            ['Saldo pendiente:', f"${saldo_pendiente_total:,.2f}"],
+        ]
+        
+        # Agregar estadísticas por estado
+        for estado, count in estados_count.items():
+            estadisticas_data.append([f"Reservas {estado}:", str(count)])
+        
+        estadisticas_table = Table(estadisticas_data, colWidths=[3*inch, 2*inch])
+        estadisticas_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), colors.lightgreen),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(estadisticas_table)
+        story.append(Spacer(1, 20))
+        
+        # Tabla resumen de reservas
+        story.append(Paragraph("<b>DETALLE DE RESERVAS</b>", styles['Heading2']))
+        
+        reservas_data = [['Reserva', 'Cliente', 'Habitación', 'Entrada', 'Salida', 'Estado', 'Total', 'Pagado', 'Pendiente']]
+        
+        for reserva in reservas:
+            fecha_salida = reserva.fecha_salida.strftime('%d/%m/%Y') if reserva.fecha_salida else 'Indefinida'
+            total_pagado_reserva = sum(p.monto for p in reserva.pago_set.all())
+            
+            reservas_data.append([
+                reserva.numero_reserva,
+                reserva.cliente.nombre_completo,
+                f"{reserva.habitacion.numero}",
+                reserva.fecha_entrada.strftime('%d/%m/%Y'),
+                fecha_salida,
+                reserva.get_estado_display(),
+                f"${reserva.total_con_ajustes:,.0f}",
+                f"${total_pagado_reserva:,.0f}",
+                f"${reserva.saldo_pendiente:,.0f}"
+            ])
+        
+        reservas_table = Table(reservas_data, colWidths=[0.8*inch, 1.2*inch, 0.6*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.7*inch, 0.7*inch, 0.7*inch])
+        reservas_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lightsteelblue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(reservas_table)
+    
+    # Generar PDF
+    doc.build(story)
+    
+    # Preparar respuesta
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="reporte_fechas_{fecha_desde.strftime("%Y%m%d")}_{fecha_hasta.strftime("%Y%m%d")}.pdf"'
+    
+    return response
 
 
 # === API ENDPOINTS ===
@@ -785,18 +1349,31 @@ def api_habitaciones_disponibles(request):
     fecha_entrada = request.GET.get('fecha_entrada')
     fecha_salida = request.GET.get('fecha_salida')
     
-    if not fecha_entrada or not fecha_salida:
+    if not fecha_entrada:
         return JsonResponse({'habitaciones': []})
     
     fecha_entrada = datetime.strptime(fecha_entrada, '%Y-%m-%d').date()
-    fecha_salida = datetime.strptime(fecha_salida, '%Y-%m-%d').date()
     
-    # Habitaciones ocupadas en esas fechas
-    ocupadas = Reserva.objects.filter(
-        estado__in=['confirmada', 'en_curso'],
-        fecha_entrada__lt=fecha_salida,
-        fecha_salida__gt=fecha_entrada
-    ).values_list('habitacion_id', flat=True)
+    # Si hay fecha de salida, verificar conflictos normalmente
+    if fecha_salida:
+        fecha_salida = datetime.strptime(fecha_salida, '%Y-%m-%d').date()
+        
+        # Habitaciones ocupadas en esas fechas
+        ocupadas = Reserva.objects.filter(
+            estado__in=['confirmada', 'en_curso'],
+            fecha_entrada__lt=fecha_salida,
+            fecha_salida__gt=fecha_entrada
+        ).exclude(fecha_salida__isnull=True).values_list('habitacion_id', flat=True)
+    else:
+        # Para reservas indefinidas, verificar habitaciones que no estén ocupadas actualmente
+        # o que tengan reservas indefinidas activas
+        ocupadas = Reserva.objects.filter(
+            estado__in=['confirmada', 'en_curso'],
+            fecha_entrada__lte=fecha_entrada
+        ).filter(
+            models.Q(fecha_salida__isnull=True) | 
+            models.Q(fecha_salida__gt=fecha_entrada)
+        ).values_list('habitacion_id', flat=True)
     
     habitaciones = Habitacion.objects.exclude(
         id__in=ocupadas
@@ -832,6 +1409,154 @@ def api_buscar_cliente(request):
     } for c in clientes]
     
     return JsonResponse({'clientes': data})
+
+
+@csrf_exempt
+def api_crear_cliente(request):
+    """API para crear un nuevo cliente desde modal"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        try:
+            cliente = Cliente.objects.create(
+                nombre=data['nombre'],
+                apellido=data['apellido'],
+                numero_documento=data['numero_documento'],
+                tipo_documento=data.get('tipo_documento', 'cedula'),
+                telefono=data.get('telefono', ''),
+                email=data.get('email', ''),
+                direccion=data.get('direccion', '')
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'cliente': {
+                    'id': cliente.id,
+                    'nombre_completo': cliente.nombre_completo,
+                    'numero_documento': cliente.numero_documento,
+                    'telefono': cliente.telefono
+                }
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Método no permitido'})
+
+
+@csrf_exempt
+def api_extender_reserva(request):
+    """API para extender o definir fecha de salida de una reserva"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        try:
+            reserva = get_object_or_404(Reserva, id=data['reserva_id'])
+            nueva_fecha_salida = None
+            
+            if data.get('fecha_salida') and data['fecha_salida'].strip():
+                nueva_fecha_salida = datetime.strptime(data['fecha_salida'], '%Y-%m-%d').date()
+                
+                # Verificar que la nueva fecha sea posterior a la entrada
+                if nueva_fecha_salida <= reserva.fecha_entrada:
+                    return JsonResponse({'success': False, 'error': 'La fecha de salida debe ser posterior a la fecha de entrada'})
+                
+                # Verificar conflictos con otras reservas
+                conflictos = Reserva.objects.filter(
+                    habitacion=reserva.habitacion,
+                    estado__in=['confirmada', 'en_curso'],
+                    fecha_entrada__lt=nueva_fecha_salida,
+                    fecha_salida__gt=reserva.fecha_entrada
+                ).exclude(id=reserva.id).exclude(fecha_salida__isnull=True)
+                
+                if conflictos.exists():
+                    return JsonResponse({'success': False, 'error': 'No se puede extender: hay conflictos con otras reservas'})
+            
+            # Actualizar la reserva
+            reserva.fecha_salida = nueva_fecha_salida
+            reserva.save()  # Esto recalculará el precio automáticamente
+            
+            return JsonResponse({
+                'success': True,
+                'reserva': {
+                    'id': reserva.id,
+                    'numero_reserva': reserva.numero_reserva,
+                    'fecha_salida': reserva.fecha_salida.strftime('%Y-%m-%d') if reserva.fecha_salida else None,
+                    'precio_total': float(reserva.precio_total or 0),
+                    'es_indefinida': reserva.es_indefinida
+                }
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Método no permitido'})
+
+
+@csrf_exempt
+def api_agregar_ajuste(request):
+    """API para agregar ajustes de precio (extras o descuentos)"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        try:
+            reserva = get_object_or_404(Reserva, id=data['reserva_id'])
+            
+            # Validaciones
+            if not data.get('concepto') or not data.get('tipo'):
+                return JsonResponse({'success': False, 'error': 'Concepto y tipo son requeridos'})
+            
+            es_porcentaje = data.get('es_porcentaje', False)
+            
+            if es_porcentaje:
+                if not data.get('porcentaje') or float(data['porcentaje']) <= 0:
+                    return JsonResponse({'success': False, 'error': 'Porcentaje debe ser mayor a 0'})
+                monto = Decimal('0.01')  # Valor mínimo requerido
+                porcentaje = Decimal(str(data['porcentaje']))
+            else:
+                if not data.get('monto') or float(data['monto']) <= 0:
+                    return JsonResponse({'success': False, 'error': 'Monto debe ser mayor a 0'})
+                monto = Decimal(str(data['monto']))
+                porcentaje = None
+            
+            ajuste = AjustePrecio.objects.create(
+                reserva=reserva,
+                tipo=data['tipo'],
+                concepto=data['concepto'],
+                monto=monto,
+                porcentaje=porcentaje,
+                es_porcentaje=es_porcentaje,
+                usuario_creacion=request.user if request.user.is_authenticated else None
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'ajuste': {
+                    'id': ajuste.id,
+                    'tipo': ajuste.tipo,
+                    'concepto': ajuste.concepto,
+                    'monto': float(ajuste.monto),
+                    'porcentaje': float(ajuste.porcentaje) if ajuste.porcentaje else None,
+                    'es_porcentaje': ajuste.es_porcentaje,
+                    'monto_calculado': float(ajuste.monto_calculado),
+                    'fecha_creacion': ajuste.fecha_creacion.strftime('%d/%m/%Y %H:%M')
+                }
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Método no permitido'})
+
+
+@csrf_exempt
+def api_eliminar_ajuste(request):
+    """API para eliminar ajustes de precio"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        try:
+            ajuste = get_object_or_404(AjustePrecio, id=data['ajuste_id'])
+            ajuste.delete()
+            
+            return JsonResponse({'success': True})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Método no permitido'})
 
 
 def api_productos(request):
