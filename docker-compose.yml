@@ -1,0 +1,44 @@
+version: '3'
+
+services:
+  database:
+    image: postgres
+    ports:
+      - 5432:5432
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=sorteo_db
+      - POSTGRES_USER=sorteo_user
+      - POSTGRES_PASSWORD=SorteoPass123
+
+  backend:
+    build: .
+    container_name: mivoto
+    ports:
+      - 8002
+    volumes:
+      - .:/code-backend
+    command: python manage.py runserver 0.0.0.0:8002
+    depends_on:
+      - database
+
+  https-portal:
+    image: steveltn/https-portal:1
+    container_name: https_portal
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAINS: 'hotel.corpofuturo.org -> http://backend:8002'
+      STAGE: 'production'  # Cambiar a 'production' cuando todo funcione bien
+      FORCE_RENEW: 'false'
+      CLIENT_MAX_BODY_SIZE: 5M
+    volumes:
+      - https-portal-data:/var/lib/https-portal
+      - /data/https-portal/vhosts:/var/www/vhosts
+    depends_on:
+      - backend
+
+volumes:
+  https-portal-data:
