@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+
+{% block title %}Empresas - Sistema Hotelero{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2><i class="fas fa-building me-2"></i>Gestión de Empresas</h2>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{% url 'hotel:empresa_create' %}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Nueva Empresa
+            </a>
+        </div>
+    </div>
+
+    <!-- Barra de búsqueda -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <form method="get" class="d-flex">
+                <input type="text" name="q" class="form-control me-2" 
+                       placeholder="Buscar por nombre, RFC o email..." 
+                       value="{{ query }}">
+                <button type="submit" class="btn btn-outline-primary">
+                    <i class="fas fa-search"></i> Buscar
+                </button>
+                {% if query %}
+                <a href="{% url 'hotel:empresas' %}" class="btn btn-outline-secondary ms-2">
+                    <i class="fas fa-times"></i> Limpiar
+                </a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de empresas -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>RFC</th>
+                            <th>Teléfono</th>
+                            <th>Email</th>
+                            <th>Contacto</th>
+                            <th>Estado</th>
+                            <th>Clientes</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for empresa in empresas %}
+                        <tr>
+                            <td><strong>{{ empresa.nombre }}</strong></td>
+                            <td>{{ empresa.rfc }}</td>
+                            <td>{{ empresa.telefono }}</td>
+                            <td>{{ empresa.email }}</td>
+                            <td>{{ empresa.contacto|default:"-" }}</td>
+                            <td>
+                                {% if empresa.activa %}
+                                    <span class="badge bg-success">Activa</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactiva</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ empresa.cliente_set.count }}</span>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'hotel:empresa_edit' empresa.id %}" 
+                                       class="btn btn-outline-primary" title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'hotel:empresa_delete' empresa.id %}" 
+                                       class="btn btn-outline-danger" title="Eliminar">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <i class="fas fa-building fa-3x text-muted mb-3"></i>
+                                <p class="text-muted">No se encontraron empresas</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Paginación -->
+            {% if empresas.has_other_pages %}
+            <nav aria-label="Paginación">
+                <ul class="pagination justify-content-center">
+                    {% if empresas.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ empresas.previous_page_number }}{% if query %}&q={{ query }}{% endif %}">
+                            Anterior
+                        </a>
+                    </li>
+                    {% endif %}
+                    
+                    {% for num in empresas.paginator.page_range %}
+                    <li class="page-item {% if empresas.number == num %}active{% endif %}">
+                        <a class="page-link" href="?page={{ num }}{% if query %}&q={{ query }}{% endif %}">
+                            {{ num }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                    
+                    {% if empresas.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ empresas.next_page_number }}{% if query %}&q={{ query }}{% endif %}">
+                            Siguiente
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

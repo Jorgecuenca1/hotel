@@ -1,0 +1,359 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Inventario - Habitación {{ habitacion.numero }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-boxes"></i> Inventario de Habitación {{ habitacion.numero }}</h2>
+                    <p class="text-muted mb-0">
+                        {{ habitacion.tipo.nombre }} - Piso {{ habitacion.piso }}
+                        <span class="badge bg-{{ habitacion.estado|default:'secondary' }} ms-2">{{ habitacion.get_estado_display }}</span>
+                    </p>
+                </div>
+                <div>
+                    <a href="{% url 'hotel:habitaciones' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Volver
+                    </a>
+                    <button class="btn btn-primary" onclick="abrirModalAgregar()">
+                        <i class="fas fa-plus"></i> Agregar Elemento
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros por categoría -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="btn-group" role="group">
+                <button class="btn btn-outline-primary active" onclick="filtrarCategoria('todos')">
+                    Todos
+                </button>
+                <button class="btn btn-outline-primary" onclick="filtrarCategoria('basico')">
+                    <i class="fas fa-bed"></i> Básico
+                </button>
+                <button class="btn btn-outline-primary" onclick="filtrarCategoria('sexshop')">
+                    <i class="fas fa-heart"></i> Sex Shop
+                </button>
+                <button class="btn btn-outline-primary" onclick="filtrarCategoria('limpieza')">
+                    <i class="fas fa-broom"></i> Limpieza
+                </button>
+                <button class="btn btn-outline-primary" onclick="filtrarCategoria('tecnologia')">
+                    <i class="fas fa-tv"></i> Tecnología
+                </button>
+                <button class="btn btn-outline-primary" onclick="filtrarCategoria('premium')">
+                    <i class="fas fa-star"></i> Premium
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventario actual -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-list"></i> Elementos en la Habitación</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if inventario %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Elemento</th>
+                                    <th>Categoría</th>
+                                    <th>Cantidad</th>
+                                    <th>Estado</th>
+                                    <th>Costo Reposición</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in inventario %}
+                                <tr data-categoria="{{ item.elemento.categoria }}" class="item-inventario">
+                                    <td>
+                                        <strong>{{ item.elemento.nombre }}</strong>
+                                        {% if item.elemento.descripcion %}
+                                        <br><small class="text-muted">{{ item.elemento.descripcion }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ item.elemento.get_categoria_display }}</span>
+                                    </td>
+                                    <td>
+                                        <input type="number" 
+                                               class="form-control form-control-sm" 
+                                               value="{{ item.cantidad }}"
+                                               min="0"
+                                               style="width: 80px;"
+                                               onchange="actualizarCantidad({{ item.elemento.id }}, this.value, '{{ item.estado }}')">
+                                    </td>
+                                    <td>
+                                        <select class="form-select form-select-sm" 
+                                                style="width: 120px;"
+                                                onchange="actualizarEstado({{ item.elemento.id }}, {{ item.cantidad }}, this.value)">
+                                            <option value="bueno" {% if item.estado == 'bueno' %}selected{% endif %}>Bueno</option>
+                                            <option value="regular" {% if item.estado == 'regular' %}selected{% endif %}>Regular</option>
+                                            <option value="malo" {% if item.estado == 'malo' %}selected{% endif %}>Malo</option>
+                                            <option value="faltante" {% if item.estado == 'faltante' %}selected{% endif %}>Faltante</option>
+                                        </select>
+                                    </td>
+                                    <td>${{ item.elemento.costo_reposicion|floatformat:2 }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-danger" onclick="eliminarElemento({{ item.elemento.id }})">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No hay elementos registrados en el inventario de esta habitación</p>
+                        <button class="btn btn-primary" onclick="abrirModalAgregar()">
+                            <i class="fas fa-plus"></i> Agregar Primer Elemento
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen de valores -->
+    <div class="row mt-4">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Elementos</h6>
+                    <h3 id="totalElementos">{{ inventario|length }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Elementos Faltantes</h6>
+                    <h3 class="text-danger" id="elementosFaltantes">0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Valor Total Inventario</h6>
+                    <h3 class="text-success" id="valorTotal">$0.00</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Agregar Elemento -->
+<div class="modal fade" id="modalAgregarElemento" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Agregar Elemento al Inventario</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="elemento_id" class="form-label">Elemento</label>
+                    <select class="form-select" id="elemento_id">
+                        <option value="">Seleccione un elemento...</option>
+                        {% for elemento in elementos_disponibles %}
+                        <option value="{{ elemento.id }}" 
+                                data-categoria="{{ elemento.categoria }}"
+                                data-costo="{{ elemento.costo_reposicion }}">
+                            {{ elemento.nombre }} ({{ elemento.get_categoria_display }}) - ${{ elemento.costo_reposicion }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="cantidad_nueva" class="form-label">Cantidad</label>
+                    <input type="number" class="form-control" id="cantidad_nueva" value="1" min="1">
+                </div>
+                <div class="mb-3">
+                    <label for="estado_nuevo" class="form-label">Estado</label>
+                    <select class="form-select" id="estado_nuevo">
+                        <option value="bueno">Bueno</option>
+                        <option value="regular">Regular</option>
+                        <option value="malo">Malo</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="agregarElemento()">
+                    <i class="fas fa-plus"></i> Agregar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const habitacionId = {{ habitacion.id }};
+
+function abrirModalAgregar() {
+    $('#modalAgregarElemento').modal('show');
+}
+
+function agregarElemento() {
+    const elementoId = document.getElementById('elemento_id').value;
+    const cantidad = document.getElementById('cantidad_nueva').value;
+    const estado = document.getElementById('estado_nuevo').value;
+    
+    if (!elementoId) {
+        Swal.fire('Error', 'Seleccione un elemento', 'error');
+        return;
+    }
+    
+    fetch('{% url "hotel:api_actualizar_inventario" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            habitacion_id: habitacionId,
+            elemento_id: elementoId,
+            cantidad: cantidad,
+            estado: estado,
+            accion: 'agregar'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            $('#modalAgregarElemento').modal('hide');
+            Swal.fire('Éxito', data.message, 'success').then(() => {
+                location.reload();
+            });
+        } else {
+            Swal.fire('Error', data.message, 'error');
+        }
+    });
+}
+
+function actualizarCantidad(elementoId, cantidad, estado) {
+    fetch('{% url "hotel:api_actualizar_inventario" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            habitacion_id: habitacionId,
+            elemento_id: elementoId,
+            cantidad: cantidad,
+            estado: estado,
+            accion: 'actualizar'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            actualizarResumen();
+        } else {
+            Swal.fire('Error', data.message, 'error');
+        }
+    });
+}
+
+function actualizarEstado(elementoId, cantidad, estado) {
+    actualizarCantidad(elementoId, cantidad, estado);
+}
+
+function eliminarElemento(elementoId) {
+    Swal.fire({
+        title: '¿Eliminar elemento?',
+        text: 'Esta acción no se puede deshacer',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch('{% url "hotel:api_actualizar_inventario" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    habitacion_id: habitacionId,
+                    elemento_id: elementoId,
+                    accion: 'eliminar'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire('Eliminado', data.message, 'success').then(() => {
+                        location.reload();
+                    });
+                } else {
+                    Swal.fire('Error', data.message, 'error');
+                }
+            });
+        }
+    });
+}
+
+function filtrarCategoria(categoria) {
+    const items = document.querySelectorAll('.item-inventario');
+    const botones = document.querySelectorAll('.btn-group button');
+    
+    // Actualizar botones
+    botones.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Filtrar elementos
+    items.forEach(item => {
+        if (categoria === 'todos' || item.dataset.categoria === categoria) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+function actualizarResumen() {
+    // Calcular totales
+    let totalElementos = 0;
+    let elementosFaltantes = 0;
+    let valorTotal = 0;
+    
+    {% for item in inventario %}
+    totalElementos++;
+    if ('{{ item.estado }}' === 'faltante') {
+        elementosFaltantes++;
+    }
+    valorTotal += {{ item.cantidad }} * {{ item.elemento.costo_reposicion }};
+    {% endfor %}
+    
+    document.getElementById('totalElementos').textContent = totalElementos;
+    document.getElementById('elementosFaltantes').textContent = elementosFaltantes;
+    document.getElementById('valorTotal').textContent = '$' + valorTotal.toFixed(2);
+}
+
+// Actualizar resumen al cargar
+document.addEventListener('DOMContentLoaded', actualizarResumen);
+</script>
+{% endblock %}

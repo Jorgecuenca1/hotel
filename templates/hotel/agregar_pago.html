@@ -158,6 +158,18 @@
                         </div>
                     </div>
                     
+                    {% if reserva.empresa %}
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label for="pagado_por" class="form-label">¿Quién paga? <span class="text-danger">*</span></label>
+                            <select name="pagado_por" id="pagado_por" class="form-select" required>
+                                <option value="cliente">Cliente - {{ reserva.cliente.nombre_completo }}</option>
+                                <option value="empresa">Empresa - {{ reserva.empresa.nombre }}</option>
+                            </select>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
                     <div class="mb-3">
                         <label for="observaciones" class="form-label">Observaciones</label>
                         <textarea name="observaciones" id="observaciones" class="form-control" rows="3" 

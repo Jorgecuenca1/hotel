@@ -1,235 +1,266 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}Reservas - Sistema de Gestión Hotelera{% endblock %}
+{% block title %}Reservas Telefónicas{% endblock %}
 
 {% block content %}
-<div class="page-header d-flex justify-content-between align-items-center">
-    <div>
-        <h1><i class="fas fa-calendar-check"></i> Gestión de Reservas</h1>
-        <p class="mb-0">Administre todas las reservas del hotel</p>
-    </div>
-    <button class="btn btn-primary" onclick="nuevaReserva()">
-        <i class="fas fa-plus"></i> Nueva Reserva
-    </button>
-</div>
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Gestión de Reservas Telefónicas</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="{% url 'hotel:dashboard' %}">Dashboard</a></li>
+        <li class="breadcrumb-item active">Reservas</li>
+    </ol>
 
-<!-- Filtros -->
-<div class="card mb-4">
-    <div class="card-body">
-        <form method="get" class="row g-3">
-            <div class="col-md-3">
-                <label class="form-label">Estado</label>
-                <select name="estado" class="form-select">
-                    <option value="">Todos los estados</option>
-                    <option value="pendiente" {% if filtros.estado == 'pendiente' %}selected{% endif %}>Pendiente</option>
-                    <option value="confirmada" {% if filtros.estado == 'confirmada' %}selected{% endif %}>Confirmada</option>
-                    <option value="en_curso" {% if filtros.estado == 'en_curso' %}selected{% endif %}>En Curso</option>
-                    <option value="finalizada" {% if filtros.estado == 'finalizada' %}selected{% endif %}>Finalizada</option>
-                    <option value="cancelada" {% if filtros.estado == 'cancelada' %}selected{% endif %}>Cancelada</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Desde</label>
-                <input type="date" name="fecha_desde" class="form-control" value="{{ filtros.fecha_desde }}">
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Hasta</label>
-                <input type="date" name="fecha_hasta" class="form-control" value="{{ filtros.fecha_hasta }}">
-            </div>
-            <div class="col-md-3 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary me-2">
-                    <i class="fas fa-search"></i> Filtrar
-                </button>
-                <a href="{% url 'hotel:reservas' %}" class="btn btn-outline-secondary">
-                    <i class="fas fa-times"></i> Limpiar
-                </a>
-            </div>
-        </form>
+    <!-- Botón para nueva reserva -->
+    <div class="mb-4">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevaReservaModal">
+            <i class="fas fa-plus"></i> Nueva Reserva
+        </button>
     </div>
-</div>
 
-<!-- Lista de reservas -->
-<div class="card">
-    <div class="card-header">
-        <h5 class="mb-0"><i class="fas fa-list"></i> Lista de Reservas</h5>
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-3">
+                    <label for="estado" class="form-label">Estado</label>
+                    <select class="form-select" id="estado" name="estado">
+                        <option value="">Todos</option>
+                        <option value="pendiente" {% if filtros.estado == 'pendiente' %}selected{% endif %}>Pendiente</option>
+                        <option value="confirmada" {% if filtros.estado == 'confirmada' %}selected{% endif %}>Confirmada</option>
+                        <option value="cancelada" {% if filtros.estado == 'cancelada' %}selected{% endif %}>Cancelada</option>
+                        <option value="convertida" {% if filtros.estado == 'convertida' %}selected{% endif %}>Convertida</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="fecha_desde" class="form-label">Fecha Desde</label>
+                    <input type="date" class="form-control" id="fecha_desde" name="fecha_desde" value="{{ filtros.fecha_desde }}">
+                </div>
+                <div class="col-md-3">
+                    <label for="fecha_hasta" class="form-label">Fecha Hasta</label>
+                    <input type="date" class="form-control" id="fecha_hasta" name="fecha_hasta" value="{{ filtros.fecha_hasta }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <div>
+                        <button type="submit" class="btn btn-info">
+                            <i class="fas fa-filter"></i> Filtrar
+                        </button>
+                        <a href="{% url 'hotel:reservas' %}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Limpiar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
     </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th>Número</th>
-                        <th>Cliente</th>
-                        <th>Habitación</th>
-                        <th>Entrada</th>
-                        <th>Salida</th>
-                        <th>Huéspedes</th>
-                        <th>Estado</th>
-                        <th>Total</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for reserva in reservas %}
-                    <tr>
-                        <td>
-                            <strong>{{ reserva.numero_reserva }}</strong>
-                        </td>
-                        <td>
-                            <div>
-                                <strong>{{ reserva.cliente.nombre_completo }}</strong><br>
-                                <small class="text-muted">{{ reserva.cliente.numero_documento }}</small>
-                            </div>
-                        </td>
-                        <td>
-                            <span class="badge bg-info">
-                                Hab. {{ reserva.habitacion.numero }}
-                            </span><br>
-                            <small>{{ reserva.habitacion.tipo.nombre }}</small>
-                        </td>
-                        <td>{{ reserva.fecha_entrada|date:"d/m/Y" }}</td>
-                        <td>{{ reserva.fecha_salida|date:"d/m/Y" }}</td>
-                        <td class="text-center">{{ reserva.numero_huespedes }}</td>
-                        <td>
-                            <span class="badge 
-                                {% if reserva.estado == 'pendiente' %}bg-warning
-                                {% elif reserva.estado == 'confirmada' %}bg-info
-                                {% elif reserva.estado == 'en_curso' %}bg-success
-                                {% elif reserva.estado == 'finalizada' %}bg-secondary
-                                {% else %}bg-danger{% endif %}">
-                                {{ reserva.get_estado_display }}
-                            </span>
-                        </td>
-                        <td>
-                            {% if reserva.precio_total %}
-                                <strong>${{ reserva.precio_total|floatformat:2 }}</strong>
-                            {% else %}
-                                <span class="text-muted">Sin calcular</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-outline-primary" title="Ver detalle">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-                                {% if reserva.estado == 'confirmada' %}
-                                <button class="btn btn-outline-success" onclick="checkIn({{ reserva.id }})" title="Check-in">
-                                    <i class="fas fa-sign-in-alt"></i>
-                                </button>
+
+    <!-- Tabla de reservas -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-table me-1"></i>
+            Reservas Registradas
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Cliente</th>
+                            <th>Empresa</th>
+                            <th>Habitación</th>
+                            <th>Entrada Prevista</th>
+                            <th>Salida Prevista</th>
+                            <th>Días</th>
+                            <th>Precio Acordado</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for reserva in reservas %}
+                        <tr>
+                            <td>{{ reserva.numero_reserva }}</td>
+                            <td>{{ reserva.cliente.nombre_completo }}</td>
+                            <td>{{ reserva.empresa.nombre|default:"-" }}</td>
+                            <td>{{ reserva.habitacion.numero }}</td>
+                            <td>{{ reserva.fecha_entrada_prevista|date:"d/m/Y" }}</td>
+                            <td>{{ reserva.fecha_salida_prevista|date:"d/m/Y" }}</td>
+                            <td>{{ reserva.dias_estancia_previstos }}</td>
+                            <td>${{ reserva.precio_acordado|floatformat:2 }}</td>
+                            <td>
+                                {% if reserva.estado == 'pendiente' %}
+                                    <span class="badge bg-warning">Pendiente</span>
+                                {% elif reserva.estado == 'confirmada' %}
+                                    <span class="badge bg-info">Confirmada</span>
+                                {% elif reserva.estado == 'cancelada' %}
+                                    <span class="badge bg-danger">Cancelada</span>
+                                {% elif reserva.estado == 'convertida' %}
+                                    <span class="badge bg-success">Convertida</span>
                                 {% endif %}
-                                {% if reserva.estado == 'en_curso' %}
-                                <button class="btn btn-outline-warning" onclick="checkOut({{ reserva.id }})" title="Check-out">
-                                    <i class="fas fa-sign-out-alt"></i>
-                                </button>
-                                {% endif %}
-                                <button class="btn btn-outline-info" onclick="generarFactura({{ reserva.id }})" title="Generar factura">
-                                    <i class="fas fa-file-invoice"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="9" class="text-center py-4">
-                            <i class="fas fa-calendar-times fa-2x text-muted mb-2"></i><br>
-                            No se encontraron reservas con los filtros aplicados.
-                        </td>
-                    </tr>
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-sm btn-info" title="Ver detalles">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    {% if reserva.estado == 'pendiente' %}
+                                        <button class="btn btn-sm btn-success" onclick="confirmarReserva({{ reserva.id }})" title="Confirmar">
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                    {% endif %}
+                                    {% if reserva.estado == 'confirmada' %}
+                                        <button class="btn btn-sm btn-primary" onclick="convertirEnHospedada({{ reserva.id }})" title="Convertir a Hospedada">
+                                            <i class="fas fa-exchange-alt"></i>
+                                        </button>
+                                    {% endif %}
+                                    {% if reserva.estado != 'convertida' and reserva.estado != 'cancelada' %}
+                                        <button class="btn btn-sm btn-danger" onclick="cancelarReserva({{ reserva.id }})" title="Cancelar">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="10" class="text-center">No hay reservas registradas</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Paginación -->
+            {% if reservas.has_other_pages %}
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center">
+                    {% if reservas.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ reservas.previous_page_number }}">Anterior</a>
+                        </li>
+                    {% endif %}
+                    
+                    {% for num in reservas.paginator.page_range %}
+                        {% if reservas.number == num %}
+                            <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                        {% else %}
+                            <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+                        {% endif %}
                     {% endfor %}
-                </tbody>
-            </table>
+                    
+                    {% if reservas.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ reservas.next_page_number }}">Siguiente</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
         </div>
     </div>
 </div>
 
-<!-- Paginación -->
-{% if reservas.has_other_pages %}
-<nav class="mt-4">
-    <ul class="pagination justify-content-center">
-        {% if reservas.has_previous %}
-        <li class="page-item">
-            <a class="page-link" href="?page=1{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}{% if request.GET.fecha_desde %}&fecha_desde={{ request.GET.fecha_desde }}{% endif %}{% if request.GET.fecha_hasta %}&fecha_hasta={{ request.GET.fecha_hasta }}{% endif %}">Primera</a>
-        </li>
-        <li class="page-item">
-            <a class="page-link" href="?page={{ reservas.previous_page_number }}{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}{% if request.GET.fecha_desde %}&fecha_desde={{ request.GET.fecha_desde }}{% endif %}{% if request.GET.fecha_hasta %}&fecha_hasta={{ request.GET.fecha_hasta }}{% endif %}">Anterior</a>
-        </li>
-        {% endif %}
-        
-        <li class="page-item active">
-            <span class="page-link">{{ reservas.number }} de {{ reservas.paginator.num_pages }}</span>
-        </li>
-        
-        {% if reservas.has_next %}
-        <li class="page-item">
-            <a class="page-link" href="?page={{ reservas.next_page_number }}{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}{% if request.GET.fecha_desde %}&fecha_desde={{ request.GET.fecha_desde }}{% endif %}{% if request.GET.fecha_hasta %}&fecha_hasta={{ request.GET.fecha_hasta }}{% endif %}">Siguiente</a>
-        </li>
-        <li class="page-item">
-            <a class="page-link" href="?page={{ reservas.paginator.num_pages }}{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}{% if request.GET.fecha_desde %}&fecha_desde={{ request.GET.fecha_desde }}{% endif %}{% if request.GET.fecha_hasta %}&fecha_hasta={{ request.GET.fecha_hasta }}{% endif %}">Última</a>
-        </li>
-        {% endif %}
-    </ul>
-</nav>
-{% endif %}
-
 <!-- Modal Nueva Reserva -->
-<div class="modal fade" id="modalNuevaReserva" tabindex="-1">
+<div class="modal fade" id="nuevaReservaModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-plus"></i> Nueva Reserva</h5>
+                <h5 class="modal-title">Nueva Reserva Telefónica</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <!-- Contenido del formulario igual que en dashboard -->
                 <form id="formNuevaReserva">
                     <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Cliente</label>
-                            <div class="input-group position-relative">
-                                <input type="text" class="form-control" id="buscarCliente" placeholder="Buscar cliente..." autocomplete="off">
-                                <button type="button" class="btn btn-outline-secondary" onclick="abrirModalNuevoCliente()">
-                                    <i class="fas fa-plus"></i>
-                                </button>
-                                <!-- Dropdown de resultados -->
-                                <div id="dropdownClientes" class="dropdown-menu w-100" style="display: none; position: absolute; top: 100%; z-index: 1050;">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="cliente_search" class="form-label">Cliente</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="cliente_search" placeholder="Buscar cliente...">
+                                    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#nuevoClienteModal">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                                <input type="hidden" id="cliente_id" name="cliente_id">
+                                <div id="cliente_info" class="mt-2"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="empresa_search" class="form-label">Empresa (Opcional)</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="empresa_search" placeholder="Buscar empresa...">
+                                    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#nuevaEmpresaModal">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                                <input type="hidden" id="empresa_id" name="empresa_id">
+                                <div id="empresa_info" class="mt-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="habitacion_id" class="form-label">Habitación</label>
+                                <select class="form-select" id="habitacion_id" name="habitacion_id" required>
+                                    <option value="">Seleccione una habitación</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="numero_huespedes" class="form-label">Número de Huéspedes</label>
+                                <input type="number" class="form-control" id="numero_huespedes" name="numero_huespedes" value="1" min="1">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="fecha_entrada" class="form-label">Fecha de Entrada Prevista</label>
+                                <input type="date" class="form-control" id="fecha_entrada" name="fecha_entrada" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="fecha_salida" class="form-label">Fecha de Salida Prevista</label>
+                                <input type="date" class="form-control" id="fecha_salida" name="fecha_salida" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="precio_acordado" class="form-label">Precio Acordado (Opcional)</label>
+                                <input type="number" class="form-control" id="precio_acordado" name="precio_acordado" step="0.01" min="0">
+                                <small class="text-muted">Dejar vacío para calcular automáticamente</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Disponibilidad</label>
+                                <div id="disponibilidad_info" class="alert alert-info">
+                                    Seleccione habitación y fechas para verificar
                                 </div>
                             </div>
-                            <input type="hidden" id="cliente_id">
-                            <div id="clienteInfo" class="mt-2" style="display: none;">
-                                <small class="text-success">
-                                    <i class="fas fa-check"></i> <span id="clienteNombre"></span>
-                                </small>
-                            </div>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Número de Huéspedes</label>
-                            <input type="number" class="form-control" id="numero_huespedes" value="1" min="1">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Fecha de Entrada</label>
-                            <input type="date" class="form-control" id="fecha_entrada" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Fecha de Salida</label>
-                            <div class="input-group">
-                                <input type="date" class="form-control" id="fecha_salida">
-                                <div class="input-group-text">
-                                    <input type="checkbox" id="fecha_indefinida" onchange="toggleFechaIndefinida()">
-                                    <label class="ms-1" for="fecha_indefinida">Indefinida</label>
-                                </div>
-                            </div>
-                            <small class="text-muted">Marque "Indefinida" para reservas sin fecha de salida específica</small>
-                        </div>
-                        <div class="col-12 mb-3">
-                            <label class="form-label">Habitación</label>
-                            <select class="form-select" id="habitacion_id" required>
-                                <option value="">Seleccionar fechas para ver habitaciones disponibles</option>
-                            </select>
-                        </div>
-                        <div class="col-12 mb-3">
-                            <label class="form-label">Observaciones</label>
-                            <textarea class="form-control" id="observaciones" rows="3"></textarea>
-                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="observaciones" class="form-label">Observaciones</label>
+                        <textarea class="form-control" id="observaciones" name="observaciones" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="confirmar_reserva" name="confirmar">
+                        <label class="form-check-label" for="confirmar_reserva">
+                            Confirmar reserva inmediatamente
+                        </label>
                     </div>
                 </form>
             </div>
@@ -241,324 +272,255 @@
     </div>
 </div>
 
-<!-- Modal Nuevo Cliente -->
-<div class="modal fade" id="modalNuevoCliente" tabindex="-1">
+<!-- Modal para convertir a hospedada -->
+<div class="modal fade" id="convertirHospedadaModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-user-plus text-success me-2"></i>
-                    Nuevo Cliente
-                </h5>
+                <h5 class="modal-title">Convertir Reserva a Hospedada</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="formNuevoCliente">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Nombre *</label>
-                            <input type="text" class="form-control" id="nuevo_nombre" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Apellido *</label>
-                            <input type="text" class="form-control" id="nuevo_apellido" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Tipo Documento</label>
-                            <select class="form-select" id="nuevo_tipo_documento">
-                                <option value="cedula">Cédula</option>
-                                <option value="pasaporte">Pasaporte</option>
-                                <option value="tarjeta_identidad">Tarjeta de Identidad</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Número Documento *</label>
-                            <input type="text" class="form-control" id="nuevo_numero_documento" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Teléfono</label>
-                            <input type="tel" class="form-control" id="nuevo_telefono">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" id="nuevo_email">
-                        </div>
-                        <div class="col-12 mb-3">
-                            <label class="form-label">Dirección</label>
-                            <textarea class="form-control" id="nuevo_direccion" rows="2"></textarea>
-                        </div>
-                    </div>
-                </form>
+                <p>¿Está seguro de convertir esta reserva en una hospedada activa?</p>
+                <div class="mb-3">
+                    <label for="tipo_hospedada_convert" class="form-label">Tipo de Hospedada</label>
+                    <select class="form-select" id="tipo_hospedada_convert">
+                        <option value="continua">Hospedada Continua</option>
+                        <option value="por_rato">Hospedada Por Rato</option>
+                    </select>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success" onclick="guardarNuevoCliente()">
-                    <i class="fas fa-save me-1"></i>Guardar Cliente
-                </button>
+                <button type="button" class="btn btn-primary" id="btnConfirmarConversion">Convertir</button>
             </div>
         </div>
     </div>
 </div>
 
-{% endblock %}
-
-{% block extra_js %}
 <script>
-function nuevaReserva() {
-    document.getElementById('fecha_entrada').value = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    document.getElementById('fecha_salida').value = tomorrow.toISOString().split('T')[0];
+// Búsqueda de cliente
+document.getElementById('cliente_search').addEventListener('input', function() {
+    const searchTerm = this.value;
+    if (searchTerm.length > 2) {
+        fetch(`{% url 'hotel:api_buscar_cliente' %}?q=${searchTerm}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.clientes.length > 0) {
+                    const cliente = data.clientes[0];
+                    document.getElementById('cliente_id').value = cliente.id;
+                    document.getElementById('cliente_info').innerHTML = `
+                        <small class="text-success">
+                            ${cliente.nombre} ${cliente.apellido} - ${cliente.numero_documento}
+                        </small>
+                    `;
+                }
+            });
+    }
+});
+
+// Búsqueda de empresa
+document.getElementById('empresa_search').addEventListener('input', function() {
+    const searchTerm = this.value;
+    if (searchTerm.length > 2) {
+        fetch(`{% url 'hotel:api_buscar_empresa' %}?q=${searchTerm}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.empresas.length > 0) {
+                    const empresa = data.empresas[0];
+                    document.getElementById('empresa_id').value = empresa.id;
+                    document.getElementById('empresa_info').innerHTML = `
+                        <small class="text-success">
+                            ${empresa.nombre} - ${empresa.rfc}
+                        </small>
+                    `;
+                }
+            });
+    }
+});
+
+// Cargar habitaciones disponibles
+function cargarHabitaciones() {
+    const fecha_entrada = document.getElementById('fecha_entrada').value;
+    const fecha_salida = document.getElementById('fecha_salida').value;
     
-    $('#modalNuevaReserva').modal('show');
+    if (fecha_entrada && fecha_salida) {
+        fetch(`{% url 'hotel:api_habitaciones_disponibles' %}?fecha_entrada=${fecha_entrada}&fecha_salida=${fecha_salida}`)
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('habitacion_id');
+                select.innerHTML = '<option value="">Seleccione una habitación</option>';
+                
+                if (data.success) {
+                    data.habitaciones.forEach(hab => {
+                        const option = document.createElement('option');
+                        option.value = hab.id;
+                        option.textContent = `${hab.numero} - ${hab.tipo} - $${hab.precio}/noche`;
+                        select.appendChild(option);
+                    });
+                }
+            });
+    }
 }
 
-function checkIn(reservaId) {
-    Swal.fire({
-        title: 'Check-in',
-        text: '¿Confirmar el check-in de esta reserva?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, confirmar',
-        cancelButtonText: 'Cancelar'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Aquí implementarías la lógica de check-in
-            showNotification('success', 'Check-in realizado', 'El huésped ha sido registrado');
-            location.reload();
-        }
-    });
-}
-
-function checkOut(reservaId) {
-    Swal.fire({
-        title: 'Check-out',
-        text: '¿Confirmar el check-out de esta reserva?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, confirmar',
-        cancelButtonText: 'Cancelar'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Aquí implementarías la lógica de check-out
-            showNotification('success', 'Check-out realizado', 'La habitación está lista para limpieza');
-            location.reload();
-        }
-    });
-}
-
-function generarFactura(reservaId) {
-    window.open(`/facturas/${reservaId}/generar/`, '_blank');
-}
-
-// Buscar habitaciones disponibles cuando cambien las fechas
-// Función para cargar habitaciones disponibles
-function cargarHabitacionesDisponibles() {
-    const fechaEntrada = $('#fecha_entrada').val();
-    const fechaSalida = $('#fecha_salida').val();
-    const fechaIndefinida = document.getElementById('fecha_indefinida').checked;
+// Verificar disponibilidad
+function verificarDisponibilidad() {
+    const habitacion_id = document.getElementById('habitacion_id').value;
+    const fecha_entrada = document.getElementById('fecha_entrada').value;
+    const fecha_salida = document.getElementById('fecha_salida').value;
     
-    if (fechaEntrada && (fechaSalida || fechaIndefinida)) {
-        if (!fechaIndefinida && fechaEntrada >= fechaSalida) {
-            $('#habitacion_id').empty().append('<option value="">La fecha de salida debe ser posterior a la entrada</option>');
-            return;
-        }
-        
-        showLoading();
-        const params = { fecha_entrada: fechaEntrada };
-        if (!fechaIndefinida) {
-            params.fecha_salida = fechaSalida;
-        }
-        
-        $.get('{% url "hotel:api_habitaciones_disponibles" %}', params)
-        .done(function(data) {
-            const select = $('#habitacion_id');
-            select.empty();
-            
-            if (data.habitaciones.length === 0) {
-                select.append('<option value="">No hay habitaciones disponibles</option>');
+    if (habitacion_id && fecha_entrada && fecha_salida) {
+        fetch('{% url "hotel:api_verificar_disponibilidad" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                habitacion_id: habitacion_id,
+                fecha_entrada: fecha_entrada,
+                fecha_salida: fecha_salida
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            const infoDiv = document.getElementById('disponibilidad_info');
+            if (data.disponible) {
+                infoDiv.className = 'alert alert-success';
+                infoDiv.textContent = 'Habitación disponible';
             } else {
-                select.append('<option value="">Seleccionar habitación</option>');
-                data.habitaciones.forEach(function(hab) {
-                    const precio = fechaIndefinida ? 'Precio por día' : `$${hab.precio}/noche`;
-                    select.append(`<option value="${hab.id}">Habitación ${hab.numero} - ${hab.tipo} (${precio})</option>`);
-                });
+                infoDiv.className = 'alert alert-danger';
+                infoDiv.textContent = data.mensaje;
             }
-        })
-        .fail(function() {
-            showNotification('error', 'Error', 'No se pudieron cargar las habitaciones disponibles');
-        })
-        .always(function() {
-            hideLoading();
         });
     }
 }
 
-// Cargar habitaciones disponibles cuando cambien las fechas
-$('#fecha_entrada, #fecha_salida').on('change', cargarHabitacionesDisponibles);
-
-// Buscar clientes con autocompletado dinámico
-$('#buscarCliente').on('input', function() {
-    const query = $(this).val();
-    const dropdown = $('#dropdownClientes');
-    
-    if (query.length < 2) {
-        dropdown.hide();
-        $('#clienteInfo').hide();
-        $('#cliente_id').val('');
-        return;
-    }
-    
-    $.get('{% url "hotel:api_buscar_cliente" %}', { q: query })
-    .done(function(data) {
-        dropdown.empty();
-        
-        if (data.clientes.length > 0) {
-            data.clientes.forEach(function(cliente) {
-                const item = $(`
-                    <a class="dropdown-item" href="#" onclick="seleccionarCliente(${cliente.id}, '${cliente.nombre_completo}')">
-                        <div>
-                            <strong>${cliente.nombre_completo}</strong>
-                            <br>
-                            <small class="text-muted">${cliente.numero_documento} - ${cliente.telefono || 'Sin teléfono'}</small>
-                        </div>
-                    </a>
-                `);
-                dropdown.append(item);
-            });
-            dropdown.show();
-        } else {
-            dropdown.append('<div class="dropdown-item-text text-muted">No se encontraron clientes</div>');
-            dropdown.show();
-        }
-    });
+// Event listeners para fechas
+document.getElementById('fecha_entrada').addEventListener('change', function() {
+    cargarHabitaciones();
+    verificarDisponibilidad();
 });
 
-// Ocultar dropdown al hacer clic fuera
-$(document).on('click', function(e) {
-    if (!$(e.target).closest('#buscarCliente, #dropdownClientes').length) {
-        $('#dropdownClientes').hide();
-    }
+document.getElementById('fecha_salida').addEventListener('change', function() {
+    cargarHabitaciones();
+    verificarDisponibilidad();
 });
 
-// Función para seleccionar cliente del dropdown
-function seleccionarCliente(id, nombre) {
-    $('#cliente_id').val(id);
-    $('#buscarCliente').val(nombre);
-    $('#clienteNombre').text(nombre);
-    $('#clienteInfo').show();
-    $('#dropdownClientes').hide();
-}
+document.getElementById('habitacion_id').addEventListener('change', verificarDisponibilidad);
 
-// Función para manejar fecha indefinida
-function toggleFechaIndefinida() {
-    const checkbox = document.getElementById('fecha_indefinida');
-    const fechaSalida = document.getElementById('fecha_salida');
-    
-    if (checkbox.checked) {
-        fechaSalida.value = '';
-        fechaSalida.disabled = true;
-        fechaSalida.removeAttribute('required');
-    } else {
-        fechaSalida.disabled = false;
-        fechaSalida.setAttribute('required', 'required');
-    }
-    
-    // Recargar habitaciones disponibles
-    cargarHabitacionesDisponibles();
-}
-
-// Guardar reserva (actualizada para fechas indefinidas)
+// Guardar reserva
 function guardarReserva() {
-    const fechaIndefinida = document.getElementById('fecha_indefinida').checked;
-    const data = {
-        cliente_id: $('#cliente_id').val(),
-        habitacion_id: $('#habitacion_id').val(),
-        fecha_entrada: $('#fecha_entrada').val(),
-        fecha_salida: fechaIndefinida ? '' : $('#fecha_salida').val(),
-        numero_huespedes: $('#numero_huespedes').val(),
-        observaciones: $('#observaciones').val()
+    const formData = {
+        cliente_id: document.getElementById('cliente_id').value,
+        empresa_id: document.getElementById('empresa_id').value,
+        habitacion_id: document.getElementById('habitacion_id').value,
+        fecha_entrada: document.getElementById('fecha_entrada').value,
+        fecha_salida: document.getElementById('fecha_salida').value,
+        numero_huespedes: document.getElementById('numero_huespedes').value,
+        precio_acordado: document.getElementById('precio_acordado').value,
+        observaciones: document.getElementById('observaciones').value,
+        confirmar: document.getElementById('confirmar_reserva').checked
     };
-
-    if (!data.cliente_id || !data.habitacion_id || !data.fecha_entrada) {
-        showNotification('warning', 'Datos incompletos', 'Por favor complete todos los campos requeridos');
-        return;
-    }
     
-    if (!fechaIndefinida && !data.fecha_salida) {
-        showNotification('warning', 'Fecha de salida requerida', 'Por favor seleccione una fecha de salida o marque como indefinida');
-        return;
-    }
+    fetch('{% url "hotel:reserva_create" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            Swal.fire('Éxito', 'Reserva creada exitosamente', 'success')
+                .then(() => location.reload());
+        } else {
+            Swal.fire('Error', data.error, 'error');
+        }
+    });
+}
 
-    showLoading();
-    $.post('{% url "hotel:reserva_create" %}', JSON.stringify(data), 'json')
-    .done(function(response) {
-        if (response.success) {
-            showNotification('success', 'Éxito', 'Reserva creada correctamente');
-            $('#modalNuevaReserva').modal('hide');
+// Confirmar reserva
+function confirmarReserva(reserva_id) {
+    // Implementar confirmación de reserva
+    Swal.fire({
+        title: '¿Confirmar reserva?',
+        text: 'Esta acción confirmará la reserva',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, confirmar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Implementar lógica de confirmación
             location.reload();
-        } else {
-            showNotification('error', 'Error', response.error || 'Error al crear la reserva');
         }
-    })
-    .fail(function() {
-        showNotification('error', 'Error', 'Error de conexión');
-    })
-    .always(function() {
-        hideLoading();
     });
 }
 
-// Funciones para modal de nuevo cliente
-function abrirModalNuevoCliente() {
-    // Limpiar formulario
-    $('#formNuevoCliente')[0].reset();
-    $('#modalNuevoCliente').modal('show');
+// Cancelar reserva
+function cancelarReserva(reserva_id) {
+    Swal.fire({
+        title: '¿Cancelar reserva?',
+        text: 'Esta acción no se puede deshacer',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cancelar',
+        cancelButtonText: 'No'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/hotel/reservas/${reserva_id}/cancelar/`;
+            
+            const csrfToken = document.createElement('input');
+            csrfToken.type = 'hidden';
+            csrfToken.name = 'csrfmiddlewaretoken';
+            csrfToken.value = '{{ csrf_token }}';
+            form.appendChild(csrfToken);
+            
+            document.body.appendChild(form);
+            form.submit();
+        }
+    });
 }
 
-function guardarNuevoCliente() {
-    const data = {
-        nombre: $('#nuevo_nombre').val().trim(),
-        apellido: $('#nuevo_apellido').val().trim(),
-        tipo_documento: $('#nuevo_tipo_documento').val(),
-        numero_documento: $('#nuevo_numero_documento').val().trim(),
-        telefono: $('#nuevo_telefono').val().trim(),
-        email: $('#nuevo_email').val().trim(),
-        direccion: $('#nuevo_direccion').val().trim()
-    };
+// Convertir a hospedada
+let reservaToConvert = null;
 
-    // Validaciones básicas
-    if (!data.nombre || !data.apellido || !data.numero_documento) {
-        showNotification('warning', 'Datos incompletos', 'Por favor complete los campos obligatorios (nombre, apellido y número de documento)');
-        return;
+function convertirEnHospedada(reserva_id) {
+    reservaToConvert = reserva_id;
+    const modal = new bootstrap.Modal(document.getElementById('convertirHospedadaModal'));
+    modal.show();
+}
+
+document.getElementById('btnConfirmarConversion').addEventListener('click', function() {
+    if (reservaToConvert) {
+        const tipo_hospedada = document.getElementById('tipo_hospedada_convert').value;
+        
+        fetch(`/hotel/reservas/${reservaToConvert}/convertir/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                tipo_hospedada: tipo_hospedada
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                Swal.fire('Éxito', 'Reserva convertida a hospedada exitosamente', 'success')
+                    .then(() => {
+                        window.location.href = data.hospedada.redirect_url;
+                    });
+            } else {
+                Swal.fire('Error', data.error, 'error');
+            }
+        });
+        
+        bootstrap.Modal.getInstance(document.getElementById('convertirHospedadaModal')).hide();
     }
-
-    showLoading();
-    $.post('{% url "hotel:api_crear_cliente" %}', JSON.stringify(data), 'json')
-    .done(function(response) {
-        if (response.success) {
-            // Cerrar modal de nuevo cliente
-            $('#modalNuevoCliente').modal('hide');
-            
-            // Seleccionar automáticamente el cliente recién creado
-            const cliente = response.cliente;
-            $('#cliente_id').val(cliente.id);
-            $('#buscarCliente').val(cliente.nombre_completo);
-            $('#clienteNombre').text(cliente.nombre_completo);
-            $('#clienteInfo').show();
-            $('#dropdownClientes').hide();
-            
-            showNotification('success', 'Cliente creado', 'El cliente se ha creado correctamente y se ha seleccionado para la reserva');
-        } else {
-            showNotification('error', 'Error', response.error || 'Error al crear el cliente');
-        }
-    })
-    .fail(function() {
-        showNotification('error', 'Error', 'Error de conexión al crear el cliente');
-    })
-    .always(function() {
-        hideLoading();
-    });
-}
+});
 </script>
 {% endblock %}

@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+
+{% block title %}Editar Empresa - Sistema Hotelero{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2><i class="fas fa-building me-2"></i>Editar Empresa</h2>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{% url 'hotel:empresas' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Volver
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" action="{% url 'hotel:empresa_edit' empresa.id %}">
+                        {% csrf_token %}
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="nombre" class="form-label">Nombre de la Empresa *</label>
+                                <input type="text" class="form-control" id="nombre" name="nombre" 
+                                       value="{{ empresa.nombre }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="rfc" class="form-label">RFC *</label>
+                                <input type="text" class="form-control" id="rfc" name="rfc" 
+                                       value="{{ empresa.rfc }}" required>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="direccion" class="form-label">Dirección *</label>
+                            <textarea class="form-control" id="direccion" name="direccion" rows="2" required>{{ empresa.direccion }}</textarea>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="telefono" class="form-label">Teléfono *</label>
+                                <input type="tel" class="form-control" id="telefono" name="telefono" 
+                                       value="{{ empresa.telefono }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="email" class="form-label">Email *</label>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       value="{{ empresa.email }}" required>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="contacto" class="form-label">Persona de Contacto</label>
+                            <input type="text" class="form-control" id="contacto" name="contacto"
+                                   value="{{ empresa.contacto }}">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="activa" name="activa"
+                                       {% if empresa.activa %}checked{% endif %}>
+                                <label class="form-check-label" for="activa">
+                                    Empresa Activa
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="text-end">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i>Actualizar Empresa
+                            </button>
+                            <a href="{% url 'hotel:empresas' %}" class="btn btn-secondary ms-2">
+                                Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            {% if empresa.cliente_set.exists %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Clientes Asociados</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group">
+                        {% for cliente in empresa.cliente_set.all %}
+                        <li class="list-group-item">
+                            {{ cliente.nombre_completo }} - {{ cliente.numero_documento }}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

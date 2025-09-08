@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block title %}Eliminar Empresa - Sistema Hotelero{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-6 mx-auto">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Confirmar Eliminación
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <p class="lead">¿Está seguro que desea eliminar la empresa?</p>
+                    
+                    <div class="alert alert-info">
+                        <h5>{{ empresa.nombre }}</h5>
+                        <p class="mb-1"><strong>RFC:</strong> {{ empresa.rfc }}</p>
+                        <p class="mb-1"><strong>Email:</strong> {{ empresa.email }}</p>
+                        <p class="mb-0"><strong>Teléfono:</strong> {{ empresa.telefono }}</p>
+                    </div>
+                    
+                    {% if clientes_count > 0 %}
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        <strong>Advertencia:</strong> Esta empresa tiene {{ clientes_count }} cliente(s) asociado(s).
+                        No se puede eliminar hasta que se desvinculen todos los clientes.
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Esta acción no se puede deshacer.
+                    </div>
+                    {% endif %}
+                    
+                    <form method="POST" action="{% url 'hotel:empresa_delete' empresa.id %}">
+                        {% csrf_token %}
+                        <div class="text-end">
+                            {% if clientes_count == 0 %}
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-trash me-2"></i>Eliminar Empresa
+                            </button>
+                            {% endif %}
+                            <a href="{% url 'hotel:empresas' %}" class="btn btn-secondary ms-2">
+                                Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

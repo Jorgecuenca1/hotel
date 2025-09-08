@@ -13,8 +13,9 @@ from datetime import datetime, date
 from decimal import Decimal
 
 from .models import (
-    TipoHabitacion, Habitacion, Cliente, Reserva, 
-    CategoriaProducto, Producto, ConsumoHabitacion, Pago, Factura, AjustePrecio
+    TipoHabitacion, Habitacion, Cliente, Hospedada, Empresa, Reserva,
+    CategoriaProducto, Producto, ConsumoHabitacion, Pago, Factura, AjustePrecio,
+    ElementoInventario, InventarioHabitacion, TipoServicio, ServicioHospedada, FaltanteCheckout
 )
 
 
@@ -24,7 +25,8 @@ def dashboard(request):
         'total_habitaciones': Habitacion.objects.count(),
         'habitaciones_disponibles': Habitacion.objects.filter(estado='disponible').count(),
         'habitaciones_ocupadas': Habitacion.objects.filter(estado='ocupada').count(),
-        'reservas_hoy': Reserva.objects.filter(fecha_entrada=date.today()).count(),
+        'hospedadas_hoy': Hospedada.objects.filter(fecha_entrada=date.today()).count(),
+        'reservas_pendientes': Reserva.objects.filter(estado='pendiente').count(),
         'productos_bajo_stock': Producto.objects.filter(stock_actual__lte=F('stock_minimo')).count(),
         'ingresos_mes': Pago.objects.filter(
             fecha_pago__month=timezone.now().month,
@@ -375,10 +377,158 @@ def cliente_create(request):
     return JsonResponse({'success': False})
 
 
-# === RESERVAS ===
-def reservas_list(request):
-    """Lista de reservas"""
-    reservas = Reserva.objects.select_related('cliente', 'habitacion').all()
+# === EMPRESAS ===
+def empresas_list(request):
+    """Lista de empresas"""
+    query = request.GET.get('q', '')
+    empresas = Empresa.objects.all()
+    
+    if query:
+        empresas = empresas.filter(
+            Q(nombre__icontains=query) |
+            Q(rfc__icontains=query) |
+            Q(email__icontains=query)
+        )
+    
+    paginator = Paginator(empresas, 20)
+    page = request.GET.get('page')
+    empresas = paginator.get_page(page)
+    
+    return render(request, 'hotel/empresas.html', {'empresas': empresas, 'query': query})
+
+
+def empresa_create(request):
+    """Crear nueva empresa"""
+    if request.method == 'POST':
+        nombre = request.POST.get('nombre')
+        rfc = request.POST.get('rfc')
+        direccion = request.POST.get('direccion')
+        telefono = request.POST.get('telefono')
+        email = request.POST.get('email')
+        contacto = request.POST.get('contacto', '')
+        
+        if nombre and rfc and direccion and telefono and email:
+            try:
+                empresa = Empresa.objects.create(
+                    nombre=nombre,
+                    rfc=rfc,
+                    direccion=direccion,
+                    telefono=telefono,
+                    email=email,
+                    contacto=contacto
+                )
+                messages.success(request, f'Empresa {nombre} creada exitosamente')
+                return redirect('hotel:empresas')
+            except Exception as e:
+                messages.error(request, f'Error al crear la empresa: {str(e)}')
+        else:
+            messages.error(request, 'Por favor complete todos los campos obligatorios')
+    
+    return render(request, 'hotel/empresa_create.html')
+
+
+def empresa_edit(request, empresa_id):
+    """Editar empresa"""
+    empresa = get_object_or_404(Empresa, id=empresa_id)
+    
+    if request.method == 'POST':
+        empresa.nombre = request.POST.get('nombre')
+        empresa.rfc = request.POST.get('rfc')
+        empresa.direccion = request.POST.get('direccion')
+        empresa.telefono = request.POST.get('telefono')
+        empresa.email = request.POST.get('email')
+        empresa.contacto = request.POST.get('contacto', '')
+        empresa.activa = request.POST.get('activa') == 'on'
+        
+        try:
+            empresa.save()
+            messages.success(request, f'Empresa {empresa.nombre} actualizada exitosamente')
+            return redirect('hotel:empresas')
+        except Exception as e:
+            messages.error(request, f'Error al actualizar la empresa: {str(e)}')
+    
+    return render(request, 'hotel/empresa_edit.html', {'empresa': empresa})
+
+
+def empresa_delete(request, empresa_id):
+    """Eliminar empresa"""
+    empresa = get_object_or_404(Empresa, id=empresa_id)
+    
+    if request.method == 'POST':
+        # Verificar si hay clientes asociados
+        clientes_asociados = Cliente.objects.filter(empresa=empresa).count()
+        
+        if clientes_asociados > 0:
+            messages.error(request, f'No se puede eliminar la empresa. Tiene {clientes_asociados} cliente(s) asociado(s).')
+        else:
+            nombre = empresa.nombre
+            empresa.delete()
+            messages.success(request, f'Empresa {nombre} eliminada exitosamente')
+        
+        return redirect('hotel:empresas')
+    
+    clientes_count = Cliente.objects.filter(empresa=empresa).count()
+    context = {
+        'empresa': empresa,
+        'clientes_count': clientes_count
+    }
+    return render(request, 'hotel/empresa_delete.html', context)
+
+
+@csrf_exempt
+def api_buscar_empresa(request):
+    """Buscar empresa via AJAX"""
+    query = request.GET.get('q', '')
+    empresas = Empresa.objects.filter(activa=True)
+    
+    if query:
+        empresas = empresas.filter(
+            Q(nombre__icontains=query) |
+            Q(rfc__icontains=query)
+        )[:10]
+    
+    data = [{
+        'id': e.id,
+        'nombre': e.nombre,
+        'rfc': e.rfc,
+        'text': f"{e.nombre} - {e.rfc}"
+    } for e in empresas]
+    
+    return JsonResponse({'results': data})
+
+
+@csrf_exempt
+def api_crear_empresa(request):
+    """Crear nueva empresa via AJAX"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        try:
+            empresa = Empresa.objects.create(
+                nombre=data['nombre'],
+                rfc=data['rfc'],
+                direccion=data['direccion'],
+                telefono=data['telefono'],
+                email=data['email'],
+                contacto=data.get('contacto', '')
+            )
+            return JsonResponse({
+                'success': True,
+                'empresa': {
+                    'id': empresa.id,
+                    'nombre': empresa.nombre,
+                    'rfc': empresa.rfc,
+                    'email': empresa.email
+                }
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    return JsonResponse({'success': False})
+
+
+# === HOSPEDADAS ===
+def hospedadas_list(request):
+    """Lista de hospedadas"""
+    hospedadas = Hospedada.objects.select_related('cliente', 'habitacion').all()
     
     # Filtros
     estado = request.GET.get('estado')
@@ -386,26 +536,26 @@ def reservas_list(request):
     fecha_hasta = request.GET.get('fecha_hasta')
     
     if estado:
-        reservas = reservas.filter(estado=estado)
+        hospedadas = hospedadas.filter(estado=estado)
     if fecha_desde:
-        reservas = reservas.filter(fecha_entrada__gte=fecha_desde)
+        hospedadas = hospedadas.filter(fecha_entrada__gte=fecha_desde)
     if fecha_hasta:
-        reservas = reservas.filter(fecha_salida__lte=fecha_hasta)
+        hospedadas = hospedadas.filter(fecha_salida__lte=fecha_hasta)
     
-    paginator = Paginator(reservas, 20)
+    paginator = Paginator(hospedadas, 20)
     page = request.GET.get('page')
-    reservas = paginator.get_page(page)
+    hospedadas = paginator.get_page(page)
     
     context = {
-        'reservas': reservas,
+        'hospedadas': hospedadas,
         'filtros': {'estado': estado, 'fecha_desde': fecha_desde, 'fecha_hasta': fecha_hasta}
     }
-    return render(request, 'hotel/reservas.html', context)
+    return render(request, 'hotel/hospedadas.html', context)
 
 
 @csrf_exempt
-def reserva_create(request):
-    """Crear nueva reserva"""
+def hospedada_create(request):
+    """Crear nueva hospedada"""
     if request.method == 'POST':
         data = json.loads(request.body)
         try:
@@ -421,7 +571,7 @@ def reserva_create(request):
                 fecha_salida = datetime.strptime(data['fecha_salida'], '%Y-%m-%d').date()
                 
                 # Verificar conflictos solo si hay fecha de salida definida
-                conflictos = Reserva.objects.filter(
+                conflictos = Hospedada.objects.filter(
                     habitacion=habitacion,
                     estado__in=['confirmada', 'en_curso'],
                     fecha_entrada__lt=fecha_salida,
@@ -431,8 +581,8 @@ def reserva_create(request):
                 if conflictos.exists():
                     return JsonResponse({'success': False, 'error': 'Habitación no disponible en esas fechas'})
             else:
-                # Para reservas indefinidas, verificar que no haya conflictos actuales
-                conflictos_actuales = Reserva.objects.filter(
+                # Para hospedadas indefinidas, verificar que no haya conflictos actuales
+                conflictos_actuales = Hospedada.objects.filter(
                     habitacion=habitacion,
                     estado__in=['confirmada', 'en_curso'],
                     fecha_entrada__lte=fecha_entrada
@@ -442,10 +592,17 @@ def reserva_create(request):
                 )
                 
                 if conflictos_actuales.exists():
-                    return JsonResponse({'success': False, 'error': 'Habitación no disponible para reserva indefinida'})
+                    return JsonResponse({'success': False, 'error': 'Habitación no disponible para hospedada indefinida'})
             
-            reserva = Reserva.objects.create(
+            # Obtener empresa si se proporciona
+            empresa = None
+            if data.get('empresa_id'):
+                empresa = get_object_or_404(Empresa, id=data['empresa_id'])
+            
+            hospedada = Hospedada.objects.create(
+                tipo_hospedada=data.get('tipo_hospedada', 'continua'),
                 cliente=cliente,
+                empresa=empresa,
                 habitacion=habitacion,
                 fecha_entrada=fecha_entrada,
                 fecha_salida=fecha_salida,
@@ -454,19 +611,19 @@ def reserva_create(request):
                 usuario_creacion=request.user if request.user.is_authenticated else None
             )
             
-            # Cambiar estado de habitación si la reserva es para hoy
+            # Cambiar estado de habitación si la hospedada es para hoy
             if fecha_entrada == date.today():
                 habitacion.estado = 'ocupada'
                 habitacion.save()
-                reserva.estado = 'en_curso'
-                reserva.save()
+                hospedada.estado = 'en_curso'
+                hospedada.save()
             
             return JsonResponse({
                 'success': True,
-                'reserva': {
-                    'id': reserva.id,
-                    'numero_reserva': reserva.numero_reserva,
-                    'precio_total': float(reserva.precio_total or 0)
+                'hospedada': {
+                    'id': hospedada.id,
+                    'numero_hospedada': hospedada.numero_hospedada,
+                    'precio_total': float(hospedada.precio_total or 0)
                 }
             })
         except Exception as e:
@@ -474,14 +631,16 @@ def reserva_create(request):
     return JsonResponse({'success': False})
 
 
-def reserva_detail(request, reserva_id):
-    """Detalle de reserva con consumos, pagos y ajustes"""
-    reserva = get_object_or_404(Reserva, id=reserva_id)
-    consumos = ConsumoHabitacion.objects.filter(reserva=reserva).select_related('producto')
-    pagos = Pago.objects.filter(reserva=reserva)
-    ajustes = AjustePrecio.objects.filter(reserva=reserva, activo=True)
+def hospedada_detail(request, hospedada_id):
+    """Detalle de hospedada con consumos, pagos, servicios y ajustes"""
+    hospedada = get_object_or_404(Hospedada, id=hospedada_id)
+    consumos = ConsumoHabitacion.objects.filter(hospedada=hospedada).select_related('producto')
+    pagos = Pago.objects.filter(hospedada=hospedada)
+    ajustes = AjustePrecio.objects.filter(hospedada=hospedada, activo=True)
+    servicios = ServicioHospedada.objects.filter(hospedada=hospedada).select_related('tipo_servicio')
     
-    total_consumos = reserva.subtotal_consumos
+    total_consumos = hospedada.subtotal_consumos
+    total_servicios = hospedada.subtotal_servicios
     total_pagado = sum(pago.monto for pago in pagos)
     
     # Serializar ajustes para JavaScript
@@ -499,20 +658,22 @@ def reserva_detail(request, reserva_id):
         })
     
     context = {
-        'reserva': reserva,
+        'hospedada': hospedada,
         'consumos': consumos,
         'pagos': pagos,
         'ajustes': ajustes,
+        'servicios': servicios,
         'ajustes_json': json.dumps(ajustes_json),
         'total_consumos': total_consumos,
+        'total_servicios': total_servicios,
         'total_pagado': total_pagado,
     }
-    return render(request, 'hotel/reserva_detail.html', context)
+    return render(request, 'hotel/hospedada_detail.html', context)
 
 
-def agregar_consumo(request, reserva_id):
-    """Página para agregar consumo a una reserva"""
-    reserva = get_object_or_404(Reserva, id=reserva_id)
+def agregar_consumo(request, hospedada_id):
+    """Página para agregar consumo a una hospedada"""
+    hospedada = get_object_or_404(Hospedada, id=hospedada_id)
     
     if request.method == 'POST':
         producto_id = request.POST.get('producto_id')
@@ -551,7 +712,7 @@ def agregar_consumo(request, reserva_id):
     productos = Producto.objects.filter(activo=True, stock_actual__gt=0).order_by('codigo')
     
     context = {
-        'reserva': reserva,
+        'hospedada': hospedada,
         'productos': productos,
     }
     return render(request, 'hotel/agregar_consumo.html', context)
@@ -559,18 +720,19 @@ def agregar_consumo(request, reserva_id):
 
 def agregar_pago(request, reserva_id):
     """Página para agregar pago a una reserva"""
-    reserva = get_object_or_404(Reserva, id=reserva_id)
+    hospedada = get_object_or_404(Hospedada, id=reserva_id)
     
     # Calcular saldo pendiente usando los nuevos métodos que incluyen ajustes
-    pagos = Pago.objects.filter(reserva=reserva)
+    pagos = Pago.objects.filter(hospedada=hospedada)
     total_pagado = sum(pago.monto for pago in pagos)
-    total_reserva = reserva.total_con_ajustes  # Incluye habitación + consumos + ajustes
-    saldo_pendiente = reserva.saldo_pendiente  # Usa el método que incluye ajustes
+    total_hospedada = hospedada.total_con_ajustes  # Incluye habitación + consumos + ajustes
+    saldo_pendiente = hospedada.saldo_pendiente  # Usa el método que incluye ajustes
     
     if request.method == 'POST':
         monto = request.POST.get('monto')
         metodo_pago = request.POST.get('metodo_pago')
         tipo_pago = request.POST.get('tipo_pago')
+        pagado_por = request.POST.get('pagado_por', 'cliente')
         referencia = request.POST.get('referencia', '')
         observaciones = request.POST.get('observaciones', '')
         
@@ -582,10 +744,11 @@ def agregar_pago(request, reserva_id):
                 if monto <= saldo_pendiente:
                     # Crear el pago
                     Pago.objects.create(
-                        reserva=reserva,
+                        hospedada=reserva,
                         monto=monto,
                         metodo_pago=metodo_pago,
                         tipo_pago=tipo_pago or 'abono',
+                        pagado_por=pagado_por,
                         referencia=referencia,
                         observaciones=observaciones,
                         fecha_pago=timezone.now()
@@ -601,7 +764,7 @@ def agregar_pago(request, reserva_id):
             messages.error(request, 'Por favor complete todos los campos obligatorios.')
     
     context = {
-        'reserva': reserva,
+        'hospedada': hospedada,
         'saldo_pendiente': saldo_pendiente,
         'total_reserva': total_reserva,
         'metodos_pago': Pago.METODOS_PAGO,
@@ -639,7 +802,7 @@ def registrar_consumo(request):
     if request.method == 'POST':
         data = json.loads(request.body)
         try:
-            reserva = get_object_or_404(Reserva, id=data['reserva_id'])
+            hospedada = get_object_or_404(Hospedada, id=data['hospedada_id'])
             producto = get_object_or_404(Producto, id=data['producto_id'])
             cantidad = int(data['cantidad'])
             
@@ -674,13 +837,14 @@ def registrar_pago(request):
     if request.method == 'POST':
         data = json.loads(request.body)
         try:
-            reserva = get_object_or_404(Reserva, id=data['reserva_id'])
+            hospedada = get_object_or_404(Hospedada, id=data['hospedada_id'])
             
             pago = Pago.objects.create(
-                reserva=reserva,
+                hospedada=reserva,
                 monto=Decimal(data['monto']),
                 metodo_pago=data['metodo_pago'],
                 tipo_pago=data['tipo_pago'],
+                pagado_por=data.get('pagado_por', 'cliente'),
                 referencia=data.get('referencia', ''),
                 observaciones=data.get('observaciones', ''),
                 usuario_registro=request.user if request.user.is_authenticated else None
@@ -702,7 +866,7 @@ def registrar_pago(request):
 # === FACTURACIÓN ===
 def generar_factura(request, reserva_id):
     """Generar factura para una reserva"""
-    reserva = get_object_or_404(Reserva, id=reserva_id)
+    hospedada = get_object_or_404(Hospedada, id=reserva_id)
     
     # Verificar si ya existe factura
     try:
@@ -714,10 +878,10 @@ def generar_factura(request, reserva_id):
         )
     
     # Calcular totales y estado de pago
-    pagos = Pago.objects.filter(reserva=reserva)
+    pagos = Pago.objects.filter(hospedada=hospedada)
     ajustes = AjustePrecio.objects.filter(reserva=reserva, activo=True)
     total_pagado = sum(pago.monto for pago in pagos)
-    saldo_pendiente = reserva.saldo_pendiente
+    saldo_pendiente = hospedada.saldo_pendiente
     
     # Determinar estado de pago
     if saldo_pendiente <= 0:
@@ -1443,12 +1607,12 @@ def api_crear_cliente(request):
 
 
 @csrf_exempt
-def api_extender_reserva(request):
+def api_extender_hospedada(request):
     """API para extender o definir fecha de salida de una reserva"""
     if request.method == 'POST':
         data = json.loads(request.body)
         try:
-            reserva = get_object_or_404(Reserva, id=data['reserva_id'])
+            hospedada = get_object_or_404(Hospedada, id=data['hospedada_id'])
             nueva_fecha_salida = None
             
             if data.get('fecha_salida') and data['fecha_salida'].strip():
@@ -1495,7 +1659,7 @@ def api_agregar_ajuste(request):
     if request.method == 'POST':
         data = json.loads(request.body)
         try:
-            reserva = get_object_or_404(Reserva, id=data['reserva_id'])
+            hospedada = get_object_or_404(Hospedada, id=data['hospedada_id'])
             
             # Validaciones
             if not data.get('concepto') or not data.get('tipo'):
@@ -1757,3 +1921,297 @@ def ajustar_stock(request):
             return redirect('hotel:inventario')
     
     return redirect('hotel:inventario')
+
+
+# === SERVICIOS ===
+def agregar_servicio(request, hospedada_id):
+    """Página para agregar servicio a una hospedada"""
+    hospedada = get_object_or_404(Hospedada, id=hospedada_id)
+    tipos_servicio = TipoServicio.objects.filter(activo=True)
+    
+    if request.method == 'POST':
+        tipo_servicio_id = request.POST.get('tipo_servicio_id')
+        cantidad = request.POST.get('cantidad')
+        precio = request.POST.get('precio')
+        observaciones = request.POST.get('observaciones', '')
+        
+        if tipo_servicio_id and cantidad and precio:
+            try:
+                tipo_servicio = get_object_or_404(TipoServicio, id=tipo_servicio_id)
+                cantidad = int(cantidad)
+                precio = float(precio)
+                
+                # Crear el servicio
+                ServicioHospedada.objects.create(
+                    hospedada=hospedada,
+                    tipo_servicio=tipo_servicio,
+                    cantidad=cantidad,
+                    precio=precio,
+                    observaciones=observaciones,
+                    registrado_por=request.user if request.user.is_authenticated else None
+                )
+                
+                messages.success(request, f'Servicio registrado: {cantidad}x {tipo_servicio.nombre}')
+                return redirect('hotel:hospedada_detail', hospedada_id=hospedada.id)
+            except ValueError:
+                messages.error(request, 'Error en los valores ingresados')
+    
+    context = {
+        'hospedada': hospedada,
+        'tipos_servicio': tipos_servicio,
+    }
+    return render(request, 'hotel/agregar_servicio.html', context)
+
+
+@csrf_exempt
+def api_agregar_servicio(request):
+    """API para agregar servicio desde el detalle de hospedada"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        
+        hospedada_id = data.get('hospedada_id')
+        tipo_servicio_id = data.get('tipo_servicio_id')
+        cantidad = data.get('cantidad', 1)
+        precio = data.get('precio')
+        observaciones = data.get('observaciones', '')
+        
+        try:
+            hospedada = Hospedada.objects.get(id=hospedada_id)
+            tipo_servicio = TipoServicio.objects.get(id=tipo_servicio_id)
+            
+            servicio = ServicioHospedada.objects.create(
+                hospedada=hospedada,
+                tipo_servicio=tipo_servicio,
+                cantidad=cantidad,
+                precio=precio,
+                observaciones=observaciones,
+                registrado_por=request.user if request.user.is_authenticated else None
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Servicio agregado: {tipo_servicio.nombre}',
+                'servicio': {
+                    'id': servicio.id,
+                    'nombre': tipo_servicio.nombre,
+                    'cantidad': cantidad,
+                    'precio': str(precio),
+                    'subtotal': str(servicio.subtotal),
+                    'fecha': servicio.fecha_servicio.strftime('%d/%m/%Y %H:%M')
+                }
+            })
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            })
+    
+    return JsonResponse({'success': False, 'message': 'Método no permitido'})
+
+
+@csrf_exempt 
+def api_tipos_servicio(request):
+    """API para obtener tipos de servicio disponibles"""
+    tipos = TipoServicio.objects.filter(activo=True).values(
+        'id', 'nombre', 'descripcion', 'precio_sugerido', 'requiere_precio'
+    )
+    return JsonResponse({'tipos': list(tipos)})
+
+
+# === INVENTARIO ===
+def habitacion_inventario(request, habitacion_id):
+    """Ver y gestionar inventario de una habitación"""
+    habitacion = get_object_or_404(Habitacion, id=habitacion_id)
+    inventario = InventarioHabitacion.objects.filter(habitacion=habitacion).select_related('elemento')
+    elementos_disponibles = ElementoInventario.objects.filter(activo=True)
+    
+    context = {
+        'habitacion': habitacion,
+        'inventario': inventario,
+        'elementos_disponibles': elementos_disponibles,
+    }
+    return render(request, 'hotel/habitacion_inventario.html', context)
+
+
+@csrf_exempt
+def api_actualizar_inventario(request):
+    """API para actualizar inventario de habitación"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        
+        habitacion_id = data.get('habitacion_id')
+        elemento_id = data.get('elemento_id')
+        cantidad = data.get('cantidad', 0)
+        estado = data.get('estado', 'bueno')
+        accion = data.get('accion', 'actualizar')  # actualizar, agregar, eliminar
+        
+        try:
+            habitacion = Habitacion.objects.get(id=habitacion_id)
+            
+            if accion == 'agregar':
+                elemento = ElementoInventario.objects.get(id=elemento_id)
+                inventario, created = InventarioHabitacion.objects.get_or_create(
+                    habitacion=habitacion,
+                    elemento=elemento,
+                    defaults={'cantidad': cantidad, 'estado': estado}
+                )
+                if not created:
+                    inventario.cantidad = cantidad
+                    inventario.estado = estado
+                    inventario.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Elemento {elemento.nombre} agregado/actualizado',
+                    'inventario': {
+                        'id': inventario.id,
+                        'elemento': elemento.nombre,
+                        'cantidad': inventario.cantidad,
+                        'estado': inventario.estado
+                    }
+                })
+            
+            elif accion == 'actualizar':
+                inventario = InventarioHabitacion.objects.get(
+                    habitacion=habitacion,
+                    elemento__id=elemento_id
+                )
+                inventario.cantidad = cantidad
+                inventario.estado = estado
+                inventario.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Inventario actualizado'
+                })
+            
+            elif accion == 'eliminar':
+                InventarioHabitacion.objects.filter(
+                    habitacion=habitacion,
+                    elemento__id=elemento_id
+                ).delete()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Elemento eliminado del inventario'
+                })
+                
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'message': str(e)
+            })
+    
+    return JsonResponse({'success': False, 'message': 'Método no permitido'})
+
+
+def gestionar_elementos_inventario(request):
+    """Gestionar catálogo de elementos de inventario"""
+    elementos = ElementoInventario.objects.all().order_by('categoria', 'nombre')
+    
+    if request.method == 'POST':
+        # Crear nuevo elemento
+        nombre = request.POST.get('nombre')
+        categoria = request.POST.get('categoria')
+        costo_reposicion = request.POST.get('costo_reposicion')
+        descripcion = request.POST.get('descripcion', '')
+        
+        if nombre and categoria and costo_reposicion:
+            try:
+                ElementoInventario.objects.create(
+                    nombre=nombre,
+                    categoria=categoria,
+                    costo_reposicion=float(costo_reposicion),
+                    descripcion=descripcion
+                )
+                messages.success(request, f'Elemento "{nombre}" creado exitosamente')
+                return redirect('hotel:gestionar_elementos_inventario')
+            except Exception as e:
+                messages.error(request, f'Error al crear elemento: {str(e)}')
+    
+    context = {
+        'elementos': elementos,
+        'categorias': ElementoInventario.CATEGORIAS,
+    }
+    return render(request, 'hotel/gestionar_elementos_inventario.html', context)
+
+
+# === CHECKOUT ===
+@csrf_exempt
+def hospedada_checkout(request, hospedada_id):
+    """Realizar checkout de una hospedada"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        try:
+            hospedada = get_object_or_404(Hospedada, id=hospedada_id)
+            
+            # Verificar que esté en estado correcto
+            if hospedada.estado not in ['en_curso', 'confirmada']:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'La hospedada no está en estado válido para checkout'
+                })
+            
+            # Obtener parámetros del checkout
+            accion = data.get('accion')  # 'pagar_todo', 'dejar_deuda', 'sin_deuda'
+            deudor = data.get('deudor', 'cliente')  # 'cliente' o 'empresa'
+            observaciones_deuda = data.get('observaciones_deuda', '')
+            
+            # Calcular saldo pendiente
+            saldo_pendiente = hospedada.saldo_pendiente
+            
+            # Si hay saldo pendiente y se quiere pagar todo
+            if accion == 'pagar_todo' and saldo_pendiente > 0:
+                # Crear pago completo
+                pago = Pago.objects.create(
+                    hospedada=hospedada,
+                    monto=saldo_pendiente,
+                    metodo_pago=data.get('metodo_pago', 'efectivo'),
+                    tipo_pago='pago_total',
+                    pagado_por=deudor,
+                    observaciones='Pago completo en checkout',
+                    usuario_registro=request.user if request.user.is_authenticated else None
+                )
+                # Realizar checkout sin deuda
+                hospedada.realizar_checkout(pagar_todo=True)
+                mensaje = f'Checkout realizado. Se pagó el total de ${saldo_pendiente:.2f}'
+                
+            elif accion == 'dejar_deuda' and saldo_pendiente > 0:
+                # Realizar checkout con deuda
+                hospedada.realizar_checkout(
+                    pagar_todo=False, 
+                    deudor=deudor,
+                    observaciones_deuda=observaciones_deuda
+                )
+                deudor_texto = 'La empresa' if deudor == 'empresa' else 'El cliente'
+                mensaje = f'Checkout realizado. {deudor_texto} quedó debiendo ${saldo_pendiente:.2f}'
+                
+            else:
+                # Sin saldo pendiente o checkout normal
+                hospedada.realizar_checkout(pagar_todo=True)
+                mensaje = 'Checkout realizado exitosamente'
+            
+            return JsonResponse({
+                'success': True,
+                'mensaje': mensaje,
+                'tiene_deuda': hospedada.tiene_deuda,
+                'monto_deuda': float(hospedada.monto_deuda),
+                'deudor': hospedada.deudor
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Método no permitido'})
+
+
+# Import views for the new Reservas module
+from .views_reservas import (
+    reservas_list,
+    reserva_create,
+    reserva_detail,
+    reserva_edit,
+    reserva_cancelar,
+    reserva_convertir,
+    api_verificar_disponibilidad
+)

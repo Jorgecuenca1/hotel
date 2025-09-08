@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(test:*)",
+      "Bash(cat:*)",
+      "Bash(hotel_envScriptsactivate)",
+      "Bash(python manage.py:*)",
+      "Bash(cmd /c:*)",
+      "Bash(hotel_envScriptspython.exe manage.py runserver)",
+      "Bash(copy templateshotelreservas.html templateshotelhospedadas.html)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

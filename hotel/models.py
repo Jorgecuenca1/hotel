@@ -49,6 +49,26 @@ class Habitacion(models.Model):
         return f"Habitación {self.numero} - {self.tipo.nombre}"
 
 
+class Empresa(models.Model):
+    """Empresas asociadas a clientes"""
+    nombre = models.CharField(max_length=200, verbose_name="Nombre de la Empresa")
+    rfc = models.CharField(max_length=20, unique=True, verbose_name="RFC")
+    direccion = models.TextField(verbose_name="Dirección")
+    telefono = models.CharField(max_length=20, verbose_name="Teléfono")
+    email = models.EmailField(verbose_name="Email")
+    contacto = models.CharField(max_length=100, blank=True, verbose_name="Persona de Contacto")
+    activa = models.BooleanField(default=True, verbose_name="Activa")
+    fecha_registro = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Registro")
+    
+    class Meta:
+        verbose_name = "Empresa"
+        verbose_name_plural = "Empresas"
+        ordering = ['nombre']
+    
+    def __str__(self):
+        return f"{self.nombre} - {self.rfc}"
+
+
 class Cliente(models.Model):
     """Clientes del hotel"""
     TIPOS_DOCUMENTO = [
@@ -65,6 +85,7 @@ class Cliente(models.Model):
     email = models.EmailField(blank=True, verbose_name="Email")
     direccion = models.TextField(blank=True, verbose_name="Dirección")
     fecha_nacimiento = models.DateField(null=True, blank=True, verbose_name="Fecha de Nacimiento")
+    empresa = models.ForeignKey(Empresa, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa Asociada")
     fecha_registro = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Registro")
     
     class Meta:
@@ -80,8 +101,8 @@ class Cliente(models.Model):
         return f"{self.nombre} {self.apellido}"
 
 
-class Reserva(models.Model):
-    """Reservas de habitaciones"""
+class Hospedada(models.Model):
+    """Hospedadas de habitaciones"""
     ESTADOS = [
         ('pendiente', 'Pendiente'),
         ('confirmada', 'Confirmada'),
@@ -90,8 +111,15 @@ class Reserva(models.Model):
         ('cancelada', 'Cancelada'),
     ]
     
-    numero_reserva = models.CharField(max_length=20, unique=True, verbose_name="Número de Reserva")
+    TIPOS_HOSPEDADA = [
+        ('continua', 'Hospedada Continua'),
+        ('por_rato', 'Hospedada Por Rato'),
+    ]
+    
+    numero_hospedada = models.CharField(max_length=20, unique=True, verbose_name="Número de Hospedada")
+    tipo_hospedada = models.CharField(max_length=20, choices=TIPOS_HOSPEDADA, default='continua', verbose_name="Tipo de Hospedada")
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, verbose_name="Cliente")
+    empresa = models.ForeignKey(Empresa, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa")
     habitacion = models.ForeignKey(Habitacion, on_delete=models.CASCADE, verbose_name="Habitación")
     fecha_entrada = models.DateField(verbose_name="Fecha de Entrada")
     fecha_salida = models.DateField(null=True, blank=True, verbose_name="Fecha de Salida")
@@ -108,17 +136,35 @@ class Reserva(models.Model):
     fecha_creacion = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Creación")
     usuario_creacion = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, verbose_name="Usuario que Creó")
     
+    # Campos para gestión de deudas
+    tiene_deuda = models.BooleanField(default=False, verbose_name="Tiene Deuda")
+    monto_deuda = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0,
+        verbose_name="Monto de Deuda"
+    )
+    deudor = models.CharField(
+        max_length=20, 
+        choices=[('cliente', 'Cliente'), ('empresa', 'Empresa')],
+        blank=True,
+        verbose_name="Deudor"
+    )
+    fecha_checkout = models.DateTimeField(null=True, blank=True, verbose_name="Fecha de Checkout")
+    observaciones_deuda = models.TextField(blank=True, verbose_name="Observaciones de Deuda")
+    
     class Meta:
-        verbose_name = "Reserva"
-        verbose_name_plural = "Reservas"
+        verbose_name = "Hospedada"
+        verbose_name_plural = "Hospedadas"
         ordering = ['-fecha_creacion']
     
     def __str__(self):
-        return f"Reserva {self.numero_reserva} - {self.cliente.nombre_completo}"
+        return f"Hospedada {self.numero_hospedada} - {self.cliente.nombre_completo}"
     
     def save(self, *args, **kwargs):
-        if not self.numero_reserva:
-            self.numero_reserva = f"RES{uuid.uuid4().hex[:8].upper()}"
+        if not self.numero_hospedada:
+            prefix = "HOS" if self.tipo_hospedada == 'continua' else "HOR"
+            self.numero_hospedada = f"{prefix}{uuid.uuid4().hex[:8].upper()}"
         
         # Calcular precio total basado en días de estancia
         if self.fecha_entrada and self.fecha_salida:
@@ -145,7 +191,7 @@ class Reserva(models.Model):
     
     @property
     def es_indefinida(self):
-        """Indica si la reserva tiene fecha de salida indefinida"""
+        """Indica si la hospedada tiene fecha de salida indefinida"""
         return self.fecha_salida is None
     
     def calcular_precio_hasta_fecha(self, fecha_hasta=None):
@@ -166,10 +212,15 @@ class Reserva(models.Model):
         return sum(c.subtotal for c in self.consumohabitacion_set.all())
     
     @property
+    def subtotal_servicios(self):
+        """Calcula el subtotal de servicios adicionales"""
+        return sum(s.subtotal for s in self.servicios.all())
+    
+    @property
     def subtotal_ajustes(self):
         """Calcula el subtotal de ajustes (extras - descuentos)"""
         from decimal import Decimal
-        subtotal_base = (self.precio_total or 0) + self.subtotal_consumos
+        subtotal_base = (self.precio_total or 0) + self.subtotal_consumos + self.subtotal_servicios
         total_ajustes = Decimal('0')
         
         for ajuste in self.ajustes_precio.filter(activo=True):
@@ -184,14 +235,14 @@ class Reserva(models.Model):
     @property
     def total_con_ajustes(self):
         """Calcula el total incluyendo habitación, consumos y ajustes"""
-        # Para reservas indefinidas, actualizar precio antes de calcular total
+        # Para hospedadas indefinidas, actualizar precio antes de calcular total
         if self.es_indefinida:
             self.actualizar_precio_indefinida()
         
-        return (self.precio_total or 0) + self.subtotal_consumos + self.subtotal_ajustes
+        return (self.precio_total or 0) + self.subtotal_consumos + self.subtotal_servicios + self.subtotal_ajustes
     
     def actualizar_precio_indefinida(self):
-        """Actualiza el precio para reservas indefinidas basado en días transcurridos"""
+        """Actualiza el precio para hospedadas indefinidas basado en días transcurridos"""
         if self.es_indefinida and self.fecha_entrada:
             from datetime import date
             dias_transcurridos = max(1, (date.today() - self.fecha_entrada).days + 1)
@@ -203,12 +254,45 @@ class Reserva(models.Model):
     @property
     def saldo_pendiente(self):
         """Calcula el saldo pendiente considerando ajustes"""
-        # Para reservas indefinidas, actualizar precio antes de calcular saldo
+        # Para hospedadas indefinidas, actualizar precio antes de calcular saldo
         if self.es_indefinida:
             self.actualizar_precio_indefinida()
         
         total_pagos = sum(p.monto for p in self.pago_set.all())
         return self.total_con_ajustes - total_pagos
+    
+    def realizar_checkout(self, pagar_todo=False, deudor=None, observaciones_deuda=''):
+        """Realiza el checkout de la hospedada"""
+        from django.utils import timezone
+        
+        # Actualizar fecha de checkout
+        self.fecha_checkout = timezone.now()
+        
+        # Calcular saldo pendiente
+        saldo = self.saldo_pendiente
+        
+        if saldo > 0 and not pagar_todo:
+            # Registrar deuda
+            self.tiene_deuda = True
+            self.monto_deuda = saldo
+            self.deudor = deudor or ('empresa' if self.empresa else 'cliente')
+            self.observaciones_deuda = observaciones_deuda
+        else:
+            # Sin deuda o se pagó todo
+            self.tiene_deuda = False
+            self.monto_deuda = 0
+            self.deudor = ''
+            self.observaciones_deuda = ''
+        
+        # Cambiar estado
+        self.estado = 'finalizada'
+        
+        # Liberar habitación
+        self.habitacion.estado = 'limpieza'
+        self.habitacion.save()
+        
+        self.save()
+        return self
 
 
 class CategoriaProducto(models.Model):
@@ -256,7 +340,7 @@ class Producto(models.Model):
 
 class ConsumoHabitacion(models.Model):
     """Consumos registrados en las habitaciones"""
-    reserva = models.ForeignKey(Reserva, on_delete=models.CASCADE, verbose_name="Reserva")
+    hospedada = models.ForeignKey('Hospedada', on_delete=models.CASCADE, verbose_name="Hospedada")
     producto = models.ForeignKey(Producto, on_delete=models.CASCADE, verbose_name="Producto")
     cantidad = models.PositiveIntegerField(verbose_name="Cantidad")
     precio_unitario = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Precio Unitario")
@@ -270,7 +354,7 @@ class ConsumoHabitacion(models.Model):
         ordering = ['-fecha_consumo']
     
     def __str__(self):
-        return f"{self.producto.nombre} - {self.reserva.numero_reserva}"
+        return f"{self.producto.nombre} - {self.hospedada.numero_hospedada}"
     
     def save(self, *args, **kwargs):
         # Calcular subtotal
@@ -286,7 +370,7 @@ class ConsumoHabitacion(models.Model):
 
 
 class Pago(models.Model):
-    """Pagos realizados por las reservas"""
+    """Pagos realizados por las hospedadas"""
     METODOS_PAGO = [
         ('efectivo', 'Efectivo'),
         ('tarjeta_credito', 'Tarjeta de Crédito'),
@@ -300,8 +384,14 @@ class Pago(models.Model):
         ('pago_total', 'Pago Total'),
     ]
     
+    PAGADO_POR = [
+        ('cliente', 'Cliente'),
+        ('empresa', 'Empresa'),
+    ]
+    
     numero_pago = models.CharField(max_length=20, unique=True, verbose_name="Número de Pago")
-    reserva = models.ForeignKey(Reserva, on_delete=models.CASCADE, verbose_name="Reserva")
+    hospedada = models.ForeignKey('Hospedada', on_delete=models.CASCADE, verbose_name="Hospedada")
+    pagado_por = models.CharField(max_length=20, choices=PAGADO_POR, default='cliente', verbose_name="Pagado Por")
     monto = models.DecimalField(
         max_digits=10, 
         decimal_places=2, 
@@ -330,13 +420,13 @@ class Pago(models.Model):
 
 
 class AjustePrecio(models.Model):
-    """Ajustes de precio para reservas (extras y descuentos)"""
+    """Ajustes de precio para hospedadas (extras y descuentos)"""
     TIPOS_AJUSTE = [
         ('extra', 'Cargo Extra'),
         ('descuento', 'Descuento'),
     ]
     
-    reserva = models.ForeignKey(Reserva, on_delete=models.CASCADE, verbose_name="Reserva", related_name='ajustes_precio')
+    hospedada = models.ForeignKey('Hospedada', on_delete=models.CASCADE, verbose_name="Hospedada", related_name='ajustes_precio')
     tipo = models.CharField(max_length=20, choices=TIPOS_AJUSTE, verbose_name="Tipo de Ajuste")
     concepto = models.CharField(max_length=200, verbose_name="Concepto")
     monto = models.DecimalField(
@@ -380,9 +470,9 @@ class AjustePrecio(models.Model):
     @property
     def monto_calculado(self):
         """Retorna el monto calculado para mostrar en la interfaz"""
-        if self.es_porcentaje and self.reserva:
-            subtotal = (self.reserva.precio_total or 0) + sum(
-                c.subtotal for c in ConsumoHabitacion.objects.filter(reserva=self.reserva)
+        if self.es_porcentaje and self.hospedada:
+            subtotal = (self.hospedada.precio_total or 0) + sum(
+                c.subtotal for c in ConsumoHabitacion.objects.filter(hospedada=self.hospedada)
             )
             return self.calcular_monto_final(subtotal)
         return self.monto
@@ -391,7 +481,7 @@ class AjustePrecio(models.Model):
 class Factura(models.Model):
     """Facturas generadas"""
     numero_factura = models.CharField(max_length=20, unique=True, verbose_name="Número de Factura")
-    reserva = models.OneToOneField(Reserva, on_delete=models.CASCADE, verbose_name="Reserva")
+    hospedada = models.OneToOneField('Hospedada', on_delete=models.CASCADE, verbose_name="Hospedada")
     fecha_emision = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Emisión")
     subtotal_habitacion = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Subtotal Habitación")
     subtotal_consumos = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Subtotal Consumos")
@@ -414,15 +504,15 @@ class Factura(models.Model):
             self.numero_factura = f"FAC{uuid.uuid4().hex[:8].upper()}"
         
         # Calcular totales
-        self.subtotal_habitacion = self.reserva.precio_total or 0
+        self.subtotal_habitacion = self.hospedada.precio_total or 0
         
         # Sumar consumos
-        consumos = ConsumoHabitacion.objects.filter(reserva=self.reserva)
+        consumos = ConsumoHabitacion.objects.filter(hospedada=self.hospedada)
         self.subtotal_consumos = sum(consumo.subtotal for consumo in consumos)
         
         # Calcular ajustes de precio
         subtotal_base = self.subtotal_habitacion + self.subtotal_consumos
-        ajustes = AjustePrecio.objects.filter(reserva=self.reserva, activo=True)
+        ajustes = AjustePrecio.objects.filter(hospedada=self.hospedada, activo=True)
         
         total_ajustes = Decimal('0')
         for ajuste in ajustes:
@@ -441,3 +531,265 @@ class Factura(models.Model):
         self.total = subtotal_antes_impuestos + self.impuestos
         
         super().save(*args, **kwargs)
+
+
+class Reserva(models.Model):
+    """Reservas de habitaciones (previas a hospedadas)"""
+    ESTADOS = [
+        ('pendiente', 'Pendiente'),
+        ('confirmada', 'Confirmada'),
+        ('cancelada', 'Cancelada'),
+        ('convertida', 'Convertida a Hospedada'),
+    ]
+    
+    numero_reserva = models.CharField(max_length=20, unique=True, verbose_name="Número de Reserva")
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, verbose_name="Cliente")
+    empresa = models.ForeignKey(Empresa, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa")
+    habitacion = models.ForeignKey(Habitacion, on_delete=models.CASCADE, verbose_name="Habitación")
+    fecha_entrada_prevista = models.DateField(verbose_name="Fecha de Entrada Prevista")
+    fecha_salida_prevista = models.DateField(verbose_name="Fecha de Salida Prevista")
+    numero_huespedes = models.PositiveIntegerField(default=1, verbose_name="Número de Huéspedes")
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente', verbose_name="Estado")
+    precio_acordado = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        verbose_name="Precio Acordado"
+    )
+    observaciones = models.TextField(blank=True, verbose_name="Observaciones")
+    fecha_creacion = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Creación")
+    usuario_creacion = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, verbose_name="Usuario que Creó")
+    hospedada_convertida = models.OneToOneField(
+        'Hospedada', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='reserva_origen',
+        verbose_name="Hospedada Resultante"
+    )
+    
+    class Meta:
+        verbose_name = "Reserva"
+        verbose_name_plural = "Reservas"
+        ordering = ['-fecha_creacion']
+    
+    def __str__(self):
+        return f"Reserva {self.numero_reserva} - {self.cliente.nombre_completo}"
+    
+    def save(self, *args, **kwargs):
+        if not self.numero_reserva:
+            self.numero_reserva = f"RES{uuid.uuid4().hex[:8].upper()}"
+        
+        # Calcular precio acordado basado en días de estancia
+        if self.fecha_entrada_prevista and self.fecha_salida_prevista and not self.precio_acordado:
+            dias = (self.fecha_salida_prevista - self.fecha_entrada_prevista).days
+            if dias > 0:
+                self.precio_acordado = self.habitacion.tipo.precio_por_noche * dias
+        
+        super().save(*args, **kwargs)
+    
+    @property
+    def dias_estancia_previstos(self):
+        if self.fecha_entrada_prevista and self.fecha_salida_prevista:
+            return (self.fecha_salida_prevista - self.fecha_entrada_prevista).days
+        return 0
+    
+    def verificar_disponibilidad(self):
+        """Verifica si la habitación está disponible para las fechas solicitadas"""
+        from django.db.models import Q
+        
+        # Verificar contra otras reservas activas
+        reservas_conflicto = Reserva.objects.filter(
+            habitacion=self.habitacion,
+            estado__in=['pendiente', 'confirmada']
+        ).exclude(pk=self.pk)
+        
+        # Verificar solapamiento de fechas con reservas
+        for reserva in reservas_conflicto:
+            if (self.fecha_entrada_prevista <= reserva.fecha_salida_prevista and 
+                self.fecha_salida_prevista >= reserva.fecha_entrada_prevista):
+                return False, f"Conflicto con reserva {reserva.numero_reserva}"
+        
+        # Verificar contra hospedadas actuales
+        hospedadas_conflicto = Hospedada.objects.filter(
+            habitacion=self.habitacion,
+            estado__in=['confirmada', 'en_curso']
+        )
+        
+        for hospedada in hospedadas_conflicto:
+            # Si la hospedada tiene fecha de salida
+            if hospedada.fecha_salida:
+                if (self.fecha_entrada_prevista <= hospedada.fecha_salida and 
+                    self.fecha_salida_prevista >= hospedada.fecha_entrada):
+                    return False, f"Conflicto con hospedada {hospedada.numero_hospedada}"
+            else:
+                # Si la hospedada es indefinida, verificar solo contra fecha de entrada
+                if self.fecha_entrada_prevista <= hospedada.fecha_entrada:
+                    return False, f"Conflicto con hospedada indefinida {hospedada.numero_hospedada}"
+        
+        return True, "Habitación disponible"
+    
+    def convertir_a_hospedada(self, tipo_hospedada='continua', usuario=None):
+        """Convierte esta reserva en una hospedada"""
+        if self.estado == 'convertida':
+            raise ValueError("Esta reserva ya ha sido convertida a hospedada")
+        
+        # Crear la hospedada
+        hospedada = Hospedada.objects.create(
+            tipo_hospedada=tipo_hospedada,
+            cliente=self.cliente,
+            empresa=self.empresa,
+            habitacion=self.habitacion,
+            fecha_entrada=self.fecha_entrada_prevista,
+            fecha_salida=self.fecha_salida_prevista,
+            numero_huespedes=self.numero_huespedes,
+            estado='confirmada',
+            precio_total=self.precio_acordado,
+            observaciones=f"Convertida desde reserva {self.numero_reserva}. {self.observaciones}",
+            usuario_creacion=usuario
+        )
+        
+        # Actualizar la reserva
+        self.estado = 'convertida'
+        self.hospedada_convertida = hospedada
+        self.save()
+        
+        # Actualizar estado de la habitación
+        self.habitacion.estado = 'ocupada'
+        self.habitacion.save()
+        
+        return hospedada
+
+
+class ElementoInventario(models.Model):
+    """Catálogo de elementos que pueden estar en las habitaciones"""
+    CATEGORIAS = [
+        ('basico', 'Básico'),
+        ('sexshop', 'Sex Shop'),
+        ('premium', 'Premium'),
+        ('limpieza', 'Limpieza'),
+        ('tecnologia', 'Tecnología'),
+    ]
+    
+    nombre = models.CharField(max_length=200, verbose_name="Nombre del Elemento")
+    categoria = models.CharField(max_length=20, choices=CATEGORIAS, default='basico', verbose_name="Categoría")
+    descripcion = models.TextField(blank=True, verbose_name="Descripción")
+    costo_reposicion = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0,
+        verbose_name="Costo de Reposición"
+    )
+    activo = models.BooleanField(default=True, verbose_name="Activo")
+    
+    class Meta:
+        verbose_name = "Elemento de Inventario"
+        verbose_name_plural = "Elementos de Inventario"
+        ordering = ['categoria', 'nombre']
+    
+    def __str__(self):
+        return f"{self.nombre} ({self.get_categoria_display()})"
+
+
+class InventarioHabitacion(models.Model):
+    """Inventario específico de cada habitación"""
+    habitacion = models.ForeignKey(Habitacion, on_delete=models.CASCADE, related_name='inventario', verbose_name="Habitación")
+    elemento = models.ForeignKey(ElementoInventario, on_delete=models.CASCADE, verbose_name="Elemento")
+    cantidad = models.PositiveIntegerField(default=1, verbose_name="Cantidad")
+    estado = models.CharField(
+        max_length=20,
+        choices=[
+            ('bueno', 'Bueno'),
+            ('regular', 'Regular'),
+            ('malo', 'Malo'),
+            ('faltante', 'Faltante'),
+        ],
+        default='bueno',
+        verbose_name="Estado"
+    )
+    ultima_revision = models.DateTimeField(auto_now=True, verbose_name="Última Revisión")
+    observaciones = models.TextField(blank=True, verbose_name="Observaciones")
+    
+    class Meta:
+        verbose_name = "Inventario de Habitación"
+        verbose_name_plural = "Inventarios de Habitaciones"
+        unique_together = ['habitacion', 'elemento']
+        ordering = ['habitacion', 'elemento__categoria', 'elemento__nombre']
+    
+    def __str__(self):
+        return f"{self.habitacion.numero} - {self.elemento.nombre} ({self.cantidad})"
+
+
+class FaltanteCheckout(models.Model):
+    """Registro de elementos faltantes al hacer checkout"""
+    hospedada = models.ForeignKey('Hospedada', on_delete=models.CASCADE, related_name='faltantes', verbose_name="Hospedada")
+    elemento = models.ForeignKey(ElementoInventario, on_delete=models.CASCADE, verbose_name="Elemento")
+    cantidad = models.PositiveIntegerField(default=1, verbose_name="Cantidad Faltante")
+    costo_cobrado = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        verbose_name="Costo Cobrado"
+    )
+    observaciones = models.TextField(blank=True, verbose_name="Observaciones")
+    fecha_registro = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Registro")
+    registrado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, verbose_name="Registrado Por")
+    
+    class Meta:
+        verbose_name = "Faltante en Checkout"
+        verbose_name_plural = "Faltantes en Checkout"
+        ordering = ['-fecha_registro']
+    
+    def __str__(self):
+        return f"{self.hospedada.numero_hospedada} - {self.elemento.nombre} ({self.cantidad})"
+
+
+class TipoServicio(models.Model):
+    """Tipos de servicios adicionales disponibles"""
+    nombre = models.CharField(max_length=100, verbose_name="Nombre del Servicio")
+    descripcion = models.TextField(blank=True, verbose_name="Descripción")
+    precio_sugerido = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Precio Sugerido"
+    )
+    requiere_precio = models.BooleanField(default=True, verbose_name="Requiere Precio Manual")
+    activo = models.BooleanField(default=True, verbose_name="Activo")
+    icono = models.CharField(max_length=50, default='fas fa-concierge-bell', verbose_name="Icono (Font Awesome)")
+    
+    class Meta:
+        verbose_name = "Tipo de Servicio"
+        verbose_name_plural = "Tipos de Servicios"
+        ordering = ['nombre']
+    
+    def __str__(self):
+        return self.nombre
+
+
+class ServicioHospedada(models.Model):
+    """Servicios adicionales consumidos en una hospedada"""
+    hospedada = models.ForeignKey('Hospedada', on_delete=models.CASCADE, related_name='servicios', verbose_name="Hospedada")
+    tipo_servicio = models.ForeignKey(TipoServicio, on_delete=models.CASCADE, verbose_name="Tipo de Servicio")
+    precio = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        verbose_name="Precio"
+    )
+    cantidad = models.PositiveIntegerField(default=1, verbose_name="Cantidad")
+    fecha_servicio = models.DateTimeField(auto_now_add=True, verbose_name="Fecha del Servicio")
+    observaciones = models.TextField(blank=True, verbose_name="Observaciones")
+    registrado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, verbose_name="Registrado Por")
+    
+    class Meta:
+        verbose_name = "Servicio de Hospedada"
+        verbose_name_plural = "Servicios de Hospedadas"
+        ordering = ['-fecha_servicio']
+    
+    def __str__(self):
+        return f"{self.hospedada.numero_hospedada} - {self.tipo_servicio.nombre}"
+    
+    @property
+    def subtotal(self):
+        return self.precio * self.cantidad

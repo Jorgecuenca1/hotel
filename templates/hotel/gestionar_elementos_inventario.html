@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Catálogo de Elementos de Inventario{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2><i class="fas fa-warehouse"></i> Catálogo de Elementos de Inventario</h2>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrearElemento">
+                    <i class="fas fa-plus"></i> Nuevo Elemento
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Categorías -->
+    <div class="row">
+        {% for categoria_key, categoria_nombre in categorias %}
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-{{ categoria_key|default:'secondary' }}">
+                    <h5 class="mb-0 text-white">
+                        {% if categoria_key == 'basico' %}
+                            <i class="fas fa-bed"></i> Básico
+                        {% elif categoria_key == 'sexshop' %}
+                            <i class="fas fa-heart"></i> Sex Shop
+                        {% elif categoria_key == 'limpieza' %}
+                            <i class="fas fa-broom"></i> Limpieza
+                        {% elif categoria_key == 'tecnologia' %}
+                            <i class="fas fa-tv"></i> Tecnología
+                        {% elif categoria_key == 'premium' %}
+                            <i class="fas fa-star"></i> Premium
+                        {% else %}
+                            {{ categoria_nombre }}
+                        {% endif %}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Costo Rep.</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for elemento in elementos %}
+                                {% if elemento.categoria == categoria_key %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ elemento.nombre }}</strong>
+                                        {% if elemento.descripcion %}
+                                        <br><small class="text-muted">{{ elemento.descripcion|truncatewords:10 }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>${{ elemento.costo_reposicion|floatformat:2 }}</td>
+                                    <td>
+                                        {% if elemento.activo %}
+                                        <span class="badge bg-success">Activo</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">Inactivo</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" 
+                                                onclick="editarElemento({{ elemento.id }}, '{{ elemento.nombre }}', '{{ elemento.categoria }}', {{ elemento.costo_reposicion }}, '{{ elemento.descripcion }}')">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Modal Crear Elemento -->
+<div class="modal fade" id="modalCrearElemento" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Crear Nuevo Elemento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label">Nombre del Elemento</label>
+                        <input type="text" class="form-control" id="nombre" name="nombre" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="categoria" class="form-label">Categoría</label>
+                        <select class="form-select" id="categoria" name="categoria" required>
+                            <option value="">Seleccione...</option>
+                            {% for cat_key, cat_name in categorias %}
+                            <option value="{{ cat_key }}">{{ cat_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="costo_reposicion" class="form-label">Costo de Reposición</label>
+                        <input type="number" class="form-control" id="costo_reposicion" name="costo_reposicion" step="0.01" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="descripcion" class="form-label">Descripción (opcional)</label>
+                        <textarea class="form-control" id="descripcion" name="descripcion" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Crear Elemento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Algunos ejemplos predefinidos para facilitar el inicio -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h5 class="card-title">Agregar Elementos Comunes</h5>
+                <p class="text-muted">Haz clic para agregar rápidamente elementos comunes al catálogo:</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <!-- Básicos -->
+                    <button class="btn btn-sm btn-outline-primary" onclick="agregarRapido('Sábanas', 'basico', 15)">
+                        + Sábanas
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="agregarRapido('Almohadas', 'basico', 10)">
+                        + Almohadas
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="agregarRapido('Toallas', 'basico', 8)">
+                        + Toallas
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="agregarRapido('Cobijas', 'basico', 20)">
+                        + Cobijas
+                    </button>
+                    
+                    <!-- Tecnología -->
+                    <button class="btn btn-sm btn-outline-info" onclick="agregarRapido('Control Remoto TV', 'tecnologia', 25)">
+                        + Control TV
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" onclick="agregarRapido('Control A/C', 'tecnologia', 30)">
+                        + Control A/C
+                    </button>
+                    
+                    <!-- Sex Shop -->
+                    <button class="btn btn-sm btn-outline-danger" onclick="agregarRapido('Preservativos', 'sexshop', 5)">
+                        + Preservativos
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="agregarRapido('Lubricante', 'sexshop', 15)">
+                        + Lubricante
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="agregarRapido('Vibrador', 'sexshop', 50)">
+                        + Vibrador
+                    </button>
+                    
+                    <!-- Limpieza -->
+                    <button class="btn btn-sm btn-outline-success" onclick="agregarRapido('Jabón', 'limpieza', 3)">
+                        + Jabón
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="agregarRapido('Shampoo', 'limpieza', 5)">
+                        + Shampoo
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="agregarRapido('Papel Higiénico', 'limpieza', 2)">
+                        + Papel Higiénico
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function agregarRapido(nombre, categoria, costo) {
+    document.getElementById('nombre').value = nombre;
+    document.getElementById('categoria').value = categoria;
+    document.getElementById('costo_reposicion').value = costo;
+    $('#modalCrearElemento').modal('show');
+}
+
+function editarElemento(id, nombre, categoria, costo, descripcion) {
+    // Por ahora solo mostramos los datos
+    // En el futuro se puede implementar la edición
+    Swal.fire({
+        title: 'Editar Elemento',
+        html: `
+            <p><strong>Nombre:</strong> ${nombre}</p>
+            <p><strong>Categoría:</strong> ${categoria}</p>
+            <p><strong>Costo:</strong> $${costo}</p>
+            <p><strong>Descripción:</strong> ${descripcion || 'Sin descripción'}</p>
+        `,
+        icon: 'info',
+        confirmButtonText: 'Cerrar'
+    });
+}
+</script>
+{% endblock %}

@@ -254,15 +254,33 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'empresas' %}active{% endif %}" href="{% url 'hotel:empresas' %}">
+                        <i class="fas fa-building"></i>
+                        <span>Empresas</span>
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link {% if request.resolver_match.url_name == 'reservas' %}active{% endif %}" href="{% url 'hotel:reservas' %}">
-                        <i class="fas fa-calendar-check"></i>
+                        <i class="fas fa-phone"></i>
                         <span>Reservas</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'hospedadas' %}active{% endif %}" href="{% url 'hotel:hospedadas' %}">
+                        <i class="fas fa-calendar-check"></i>
+                        <span>Hospedadas</span>
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link {% if request.resolver_match.url_name == 'inventario' %}active{% endif %}" href="{% url 'hotel:inventario' %}">
                         <i class="fas fa-boxes"></i>
                         <span>Inventario</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'gestionar_elementos_inventario' %}active{% endif %}" href="{% url 'hotel:gestionar_elementos_inventario' %}">
+                        <i class="fas fa-warehouse"></i>
+                        <span>Catálogo Inventario</span>
                     </a>
                 </li>
                 <li class="nav-item">

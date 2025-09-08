@@ -132,6 +132,11 @@
                                 </ul>
                             </div>
                             
+                            <!-- Inventario -->
+                            <a href="{% url 'hotel:habitacion_inventario' habitacion.id %}" class="btn btn-inventario" title="Ver Inventario">
+                                <i class="fas fa-boxes"></i>
+                            </a>
+                            
                             <!-- Editar -->
                             <a href="{% url 'hotel:habitacion_edit' habitacion.id %}" class="btn btn-editar" title="Editar Habitación">
                                 <i class="fas fa-edit"></i>
