@@ -144,3 +144,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Configuración de formato de fecha
 DATE_FORMAT = 'd/m/Y'
 DATETIME_FORMAT = 'd/m/Y H:i'
+
+# Configuración de autenticación
+LOGIN_URL = '/hotel/login/'
+LOGIN_REDIRECT_URL = '/hotel/'
+LOGOUT_REDIRECT_URL = '/hotel/login/'
