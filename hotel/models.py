@@ -5,6 +5,32 @@ from decimal import Decimal
 import uuid
 
 
+class PerfilUsuario(models.Model):
+    """Perfil de usuario con roles del sistema"""
+    ROLES = [
+        ('administrador', 'Administrador'),
+        ('recepcionista', 'Recepcionista'),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, verbose_name="Usuario")
+    rol = models.CharField(max_length=20, choices=ROLES, default='recepcionista', verbose_name="Rol")
+    activo = models.BooleanField(default=True, verbose_name="Activo")
+    fecha_creacion = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Creación")
+
+    class Meta:
+        verbose_name = "Perfil de Usuario"
+        verbose_name_plural = "Perfiles de Usuarios"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_rol_display()}"
+
+    def es_administrador(self):
+        return self.rol == 'administrador'
+
+    def es_recepcionista(self):
+        return self.rol == 'recepcionista'
+
+
 class TipoHabitacion(models.Model):
     """Tipos de habitación disponibles en el hotel"""
     nombre = models.CharField(max_length=50, verbose_name="Tipo de Habitación")
@@ -359,7 +385,10 @@ class ConsumoHabitacion(models.Model):
     def save(self, *args, **kwargs):
         # Calcular subtotal
         self.precio_unitario = self.producto.precio
-        self.subtotal = self.cantidad * self.precio_unitario
+        # Asegurar que cantidad y precio_unitario sean números
+        cantidad = int(self.cantidad) if self.cantidad else 0
+        precio_unitario = float(self.precio_unitario) if self.precio_unitario else 0
+        self.subtotal = cantidad * precio_unitario
         
         # Descontar del inventario
         if self.pk is None:  # Solo al crear, no al actualizar
@@ -505,13 +534,16 @@ class Factura(models.Model):
         
         # Calcular totales
         self.subtotal_habitacion = self.hospedada.precio_total or 0
-        
+
         # Sumar consumos
         consumos = ConsumoHabitacion.objects.filter(hospedada=self.hospedada)
         self.subtotal_consumos = sum(consumo.subtotal for consumo in consumos)
-        
+
+        # Sumar servicios
+        subtotal_servicios = self.hospedada.subtotal_servicios
+
         # Calcular ajustes de precio
-        subtotal_base = self.subtotal_habitacion + self.subtotal_consumos
+        subtotal_base = self.subtotal_habitacion + self.subtotal_consumos + subtotal_servicios
         ajustes = AjustePrecio.objects.filter(hospedada=self.hospedada, activo=True)
         
         total_ajustes = Decimal('0')

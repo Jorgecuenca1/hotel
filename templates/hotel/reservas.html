@@ -177,12 +177,13 @@
                             <div class="mb-3">
                                 <label for="cliente_search" class="form-label">Cliente</label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="cliente_search" placeholder="Buscar cliente...">
+                                    <input type="text" class="form-control" id="cliente_search" placeholder="Buscar cliente..." autocomplete="off">
                                     <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#nuevoClienteModal">
                                         <i class="fas fa-plus"></i>
                                     </button>
                                 </div>
                                 <input type="hidden" id="cliente_id" name="cliente_id">
+                                <div id="cliente_resultados" class="list-group mt-1" style="position: absolute; z-index: 1000; max-height: 300px; overflow-y: auto; display: none; width: calc(100% - 50px);"></div>
                                 <div id="cliente_info" class="mt-2"></div>
                             </div>
                         </div>
@@ -190,12 +191,13 @@
                             <div class="mb-3">
                                 <label for="empresa_search" class="form-label">Empresa (Opcional)</label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="empresa_search" placeholder="Buscar empresa...">
+                                    <input type="text" class="form-control" id="empresa_search" placeholder="Buscar empresa..." autocomplete="off">
                                     <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#nuevaEmpresaModal">
                                         <i class="fas fa-plus"></i>
                                     </button>
                                 </div>
                                 <input type="hidden" id="empresa_id" name="empresa_id">
+                                <div id="empresa_resultados" class="list-group mt-1" style="position: absolute; z-index: 1000; max-height: 300px; overflow-y: auto; display: none; width: calc(100% - 50px);"></div>
                                 <div id="empresa_info" class="mt-2"></div>
                             </div>
                         </div>
@@ -302,40 +304,94 @@
 // Búsqueda de cliente
 document.getElementById('cliente_search').addEventListener('input', function() {
     const searchTerm = this.value;
-    if (searchTerm.length > 2) {
+    const resultadosDiv = document.getElementById('cliente_resultados');
+
+    if (searchTerm.length > 1) {
         fetch(`{% url 'hotel:api_buscar_cliente' %}?q=${searchTerm}`)
             .then(response => response.json())
             .then(data => {
-                if (data.success && data.clientes.length > 0) {
-                    const cliente = data.clientes[0];
-                    document.getElementById('cliente_id').value = cliente.id;
-                    document.getElementById('cliente_info').innerHTML = `
-                        <small class="text-success">
-                            ${cliente.nombre} ${cliente.apellido} - ${cliente.numero_documento}
-                        </small>
-                    `;
+                resultadosDiv.innerHTML = '';
+                if (data.clientes && data.clientes.length > 0) {
+                    data.clientes.forEach(cliente => {
+                        const item = document.createElement('a');
+                        item.href = '#';
+                        item.className = 'list-group-item list-group-item-action';
+                        item.innerHTML = `
+                            <strong>${cliente.nombre_completo}</strong><br>
+                            <small>Documento: ${cliente.numero_documento}</small>
+                        `;
+                        item.onclick = function(e) {
+                            e.preventDefault();
+                            document.getElementById('cliente_id').value = cliente.id;
+                            document.getElementById('cliente_search').value = cliente.nombre_completo;
+                            document.getElementById('cliente_info').innerHTML = `
+                                <small class="text-success">
+                                    <i class="fas fa-check"></i> ${cliente.nombre_completo} - ${cliente.numero_documento}
+                                </small>
+                            `;
+                            resultadosDiv.style.display = 'none';
+                        };
+                        resultadosDiv.appendChild(item);
+                    });
+                    resultadosDiv.style.display = 'block';
+                } else {
+                    resultadosDiv.style.display = 'none';
                 }
             });
+    } else {
+        resultadosDiv.style.display = 'none';
+    }
+});
+
+// Cerrar dropdown al hacer clic fuera
+document.addEventListener('click', function(e) {
+    if (!document.getElementById('cliente_search').contains(e.target)) {
+        document.getElementById('cliente_resultados').style.display = 'none';
+    }
+    if (!document.getElementById('empresa_search').contains(e.target)) {
+        document.getElementById('empresa_resultados').style.display = 'none';
     }
 });
 
 // Búsqueda de empresa
 document.getElementById('empresa_search').addEventListener('input', function() {
     const searchTerm = this.value;
-    if (searchTerm.length > 2) {
+    const resultadosDiv = document.getElementById('empresa_resultados');
+
+    if (searchTerm.length > 1) {
         fetch(`{% url 'hotel:api_buscar_empresa' %}?q=${searchTerm}`)
             .then(response => response.json())
             .then(data => {
-                if (data.success && data.empresas.length > 0) {
-                    const empresa = data.empresas[0];
-                    document.getElementById('empresa_id').value = empresa.id;
-                    document.getElementById('empresa_info').innerHTML = `
-                        <small class="text-success">
-                            ${empresa.nombre} - ${empresa.rfc}
-                        </small>
-                    `;
+                resultadosDiv.innerHTML = '';
+                if (data.empresas && data.empresas.length > 0) {
+                    data.empresas.forEach(empresa => {
+                        const item = document.createElement('a');
+                        item.href = '#';
+                        item.className = 'list-group-item list-group-item-action';
+                        item.innerHTML = `
+                            <strong>${empresa.nombre}</strong><br>
+                            <small>RFC: ${empresa.rfc}</small>
+                        `;
+                        item.onclick = function(e) {
+                            e.preventDefault();
+                            document.getElementById('empresa_id').value = empresa.id;
+                            document.getElementById('empresa_search').value = empresa.nombre;
+                            document.getElementById('empresa_info').innerHTML = `
+                                <small class="text-success">
+                                    <i class="fas fa-check"></i> ${empresa.nombre} - ${empresa.rfc}
+                                </small>
+                            `;
+                            resultadosDiv.style.display = 'none';
+                        };
+                        resultadosDiv.appendChild(item);
+                    });
+                    resultadosDiv.style.display = 'block';
+                } else {
+                    resultadosDiv.style.display = 'none';
                 }
             });
+    } else {
+        resultadosDiv.style.display = 'none';
     }
 });
 
@@ -410,18 +466,39 @@ document.getElementById('habitacion_id').addEventListener('change', verificarDis
 
 // Guardar reserva
 function guardarReserva() {
+    // Validar campos obligatorios
+    const cliente_id = document.getElementById('cliente_id').value;
+    const habitacion_id = document.getElementById('habitacion_id').value;
+    const fecha_entrada = document.getElementById('fecha_entrada').value;
+    const fecha_salida = document.getElementById('fecha_salida').value;
+
+    if (!cliente_id) {
+        Swal.fire('Error', 'Debe seleccionar un cliente', 'error');
+        return;
+    }
+
+    if (!habitacion_id) {
+        Swal.fire('Error', 'Debe seleccionar una habitación', 'error');
+        return;
+    }
+
+    if (!fecha_entrada || !fecha_salida) {
+        Swal.fire('Error', 'Debe seleccionar las fechas de entrada y salida', 'error');
+        return;
+    }
+
     const formData = {
-        cliente_id: document.getElementById('cliente_id').value,
-        empresa_id: document.getElementById('empresa_id').value,
-        habitacion_id: document.getElementById('habitacion_id').value,
-        fecha_entrada: document.getElementById('fecha_entrada').value,
-        fecha_salida: document.getElementById('fecha_salida').value,
-        numero_huespedes: document.getElementById('numero_huespedes').value,
-        precio_acordado: document.getElementById('precio_acordado').value,
-        observaciones: document.getElementById('observaciones').value,
+        cliente_id: cliente_id,
+        empresa_id: document.getElementById('empresa_id').value || null,
+        habitacion_id: habitacion_id,
+        fecha_entrada: fecha_entrada,
+        fecha_salida: fecha_salida,
+        numero_huespedes: document.getElementById('numero_huespedes').value || 1,
+        precio_acordado: document.getElementById('precio_acordado').value || null,
+        observaciones: document.getElementById('observaciones').value || '',
         confirmar: document.getElementById('confirmar_reserva').checked
     };
-    
+
     fetch('{% url "hotel:reserva_create" %}', {
         method: 'POST',
         headers: {
@@ -435,8 +512,12 @@ function guardarReserva() {
             Swal.fire('Éxito', 'Reserva creada exitosamente', 'success')
                 .then(() => location.reload());
         } else {
-            Swal.fire('Error', data.error, 'error');
+            Swal.fire('Error', data.error || 'Error al crear la reserva', 'error');
         }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        Swal.fire('Error', 'Error de conexión al crear la reserva', 'error');
     });
 }
 

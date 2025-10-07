@@ -1,6 +1,7 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponse
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
 from django.db.models import Q, Sum, F
 from django.db import models
@@ -15,12 +16,23 @@ from decimal import Decimal
 from .models import (
     TipoHabitacion, Habitacion, Cliente, Hospedada, Empresa, Reserva,
     CategoriaProducto, Producto, ConsumoHabitacion, Pago, Factura, AjustePrecio,
-    ElementoInventario, InventarioHabitacion, TipoServicio, ServicioHospedada, FaltanteCheckout
+    ElementoInventario, InventarioHabitacion, TipoServicio, ServicioHospedada, FaltanteCheckout,
+    PerfilUsuario
+)
+from .decorators import (
+    solo_administrador, administrador_o_recepcionista, verificar_permisos_accion
 )
 
 
+@administrador_o_recepcionista
 def dashboard(request):
     """Vista principal del dashboard"""
+    try:
+        perfil = PerfilUsuario.objects.get(user=request.user)
+    except PerfilUsuario.DoesNotExist:
+        messages.error(request, 'Tu perfil no está configurado.')
+        return redirect('hotel:login')
+
     context = {
         'total_habitaciones': Habitacion.objects.count(),
         'habitaciones_disponibles': Habitacion.objects.filter(estado='disponible').count(),
@@ -32,6 +44,7 @@ def dashboard(request):
             fecha_pago__month=timezone.now().month,
             fecha_pago__year=timezone.now().year
         ).aggregate(total=Sum('monto'))['total'] or 0,
+        'perfil': perfil,
     }
     return render(request, 'hotel/dashboard.html', context)
 
@@ -480,21 +493,21 @@ def api_buscar_empresa(request):
     """Buscar empresa via AJAX"""
     query = request.GET.get('q', '')
     empresas = Empresa.objects.filter(activa=True)
-    
+
     if query:
         empresas = empresas.filter(
             Q(nombre__icontains=query) |
             Q(rfc__icontains=query)
         )[:10]
-    
+
     data = [{
         'id': e.id,
         'nombre': e.nombre,
         'rfc': e.rfc,
         'text': f"{e.nombre} - {e.rfc}"
     } for e in empresas]
-    
-    return JsonResponse({'results': data})
+
+    return JsonResponse({'success': True, 'empresas': data})
 
 
 @csrf_exempt
@@ -628,7 +641,12 @@ def hospedada_create(request):
             })
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
-    return JsonResponse({'success': False})
+
+    # GET request - mostrar formulario
+    context = {
+        'tipos_hospedada': Hospedada.TIPOS_HOSPEDADA,
+    }
+    return render(request, 'hotel/hospedada_create.html', context)
 
 
 def hospedada_detail(request, hospedada_id):
@@ -688,7 +706,7 @@ def agregar_consumo(request, hospedada_id):
                 if producto.stock_actual >= cantidad:
                     # Crear el consumo
                     ConsumoHabitacion.objects.create(
-                        reserva=reserva,
+                        hospedada=hospedada,
                         producto=producto,
                         cantidad=cantidad,
                         precio_unitario=producto.precio,
@@ -700,7 +718,7 @@ def agregar_consumo(request, hospedada_id):
                     producto.save()
                     
                     messages.success(request, f'Consumo registrado: {cantidad}x {producto.nombre}')
-                    return redirect('hotel:reserva_detail', reserva_id=reserva.id)
+                    return redirect('hotel:hospedada_detail', hospedada_id=hospedada.id)
                 else:
                     messages.error(request, f'Stock insuficiente. Solo hay {producto.stock_actual} unidades disponibles.')
             except (ValueError, Producto.DoesNotExist):
@@ -711,16 +729,24 @@ def agregar_consumo(request, hospedada_id):
     # Obtener productos disponibles
     productos = Producto.objects.filter(activo=True, stock_actual__gt=0).order_by('codigo')
     
+    # Ensure we provide safe context for any potential reserva references
+    try:
+        # Check if this hospedada was created from a reserva (reverse relationship)
+        related_reserva = getattr(hospedada, 'reserva_origen', None)
+    except:
+        related_reserva = None
+
     context = {
         'hospedada': hospedada,
         'productos': productos,
+        'reserva': related_reserva,  # Safe reserva reference - will be None if no related reserva
     }
     return render(request, 'hotel/agregar_consumo.html', context)
 
 
-def agregar_pago(request, reserva_id):
-    """Página para agregar pago a una reserva"""
-    hospedada = get_object_or_404(Hospedada, id=reserva_id)
+def agregar_pago(request, hospedada_id):
+    """Página para agregar pago a una hospedada"""
+    hospedada = get_object_or_404(Hospedada, id=hospedada_id)
     
     # Calcular saldo pendiente usando los nuevos métodos que incluyen ajustes
     pagos = Pago.objects.filter(hospedada=hospedada)
@@ -744,7 +770,7 @@ def agregar_pago(request, reserva_id):
                 if monto <= saldo_pendiente:
                     # Crear el pago
                     Pago.objects.create(
-                        hospedada=reserva,
+                        hospedada=hospedada,
                         monto=monto,
                         metodo_pago=metodo_pago,
                         tipo_pago=tipo_pago or 'abono',
@@ -755,7 +781,7 @@ def agregar_pago(request, reserva_id):
                     )
                     
                     messages.success(request, f'Pago registrado: ${monto:.2f} por {dict(Pago.METODOS_PAGO)[metodo_pago]}')
-                    return redirect('hotel:reserva_detail', reserva_id=reserva.id)
+                    return redirect('hotel:hospedada_detail', hospedada_id=hospedada.id)
                 else:
                     messages.error(request, f'El monto no puede ser mayor al saldo pendiente (${saldo_pendiente:.2f})')
             except ValueError:
@@ -766,7 +792,7 @@ def agregar_pago(request, reserva_id):
     context = {
         'hospedada': hospedada,
         'saldo_pendiente': saldo_pendiente,
-        'total_reserva': total_reserva,
+        'total_hospedada': total_hospedada,
         'metodos_pago': Pago.METODOS_PAGO,
         'tipos_pago': Pago.TIPOS_PAGO,
     }
@@ -864,22 +890,22 @@ def registrar_pago(request):
 
 
 # === FACTURACIÓN ===
-def generar_factura(request, reserva_id):
-    """Generar factura para una reserva"""
-    hospedada = get_object_or_404(Hospedada, id=reserva_id)
-    
+def generar_factura(request, hospedada_id):
+    """Generar factura para una hospedada"""
+    hospedada = get_object_or_404(Hospedada, id=hospedada_id)
+
     # Verificar si ya existe factura
     try:
-        factura = Factura.objects.get(reserva=reserva)
+        factura = Factura.objects.get(hospedada=hospedada)
     except Factura.DoesNotExist:
         factura = Factura.objects.create(
-            reserva=reserva,
+            hospedada=hospedada,
             usuario_emision=request.user if request.user.is_authenticated else None
         )
     
     # Calcular totales y estado de pago
     pagos = Pago.objects.filter(hospedada=hospedada)
-    ajustes = AjustePrecio.objects.filter(reserva=reserva, activo=True)
+    ajustes = AjustePrecio.objects.filter(hospedada=hospedada, activo=True)
     total_pagado = sum(pago.monto for pago in pagos)
     saldo_pendiente = hospedada.saldo_pendiente
     
@@ -912,11 +938,149 @@ def generar_factura(request, reserva_id):
 
 def factura_pdf(request, factura_id):
     """Generar PDF de factura"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.units import inch
+    from io import BytesIO
+
     factura = get_object_or_404(Factura, id=factura_id)
-    
-    # Aquí puedes implementar la generación de PDF
-    # Por ahora retornamos la vista HTML
-    return render(request, 'hotel/factura_pdf.html', {'factura': factura})
+    hospedada = factura.hospedada
+
+    # Crear buffer para el PDF
+    buffer = BytesIO()
+
+    # Crear documento PDF
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+
+    # Estilos
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        spaceAfter=20,
+        alignment=1  # Centrado
+    )
+
+    # Contenido del PDF
+    story = []
+
+    # Título
+    title = Paragraph(f"FACTURA {factura.numero_factura}", title_style)
+    story.append(title)
+    story.append(Spacer(1, 20))
+
+    # Información del hotel y cliente
+    header_data = [
+        ['<b>Hotel Manager</b>', '<b>FACTURA</b>'],
+        ['Calle Principal #123', f'Número: {factura.numero_factura}'],
+        ['Ciudad, Estado 12345', f'Fecha: {factura.fecha_emision.strftime("%d/%m/%Y")}'],
+        ['Tel: (555) 123-4567', f'Hospedada: {hospedada.numero_hospedada}'],
+        ['', ''],
+        ['<b>CLIENTE</b>', ''],
+        [f'{hospedada.cliente.nombre_completo}', ''],
+        [f'Habitación: {hospedada.habitacion.numero}', ''],
+    ]
+
+    header_table = Table(header_data, colWidths=[3.5*inch, 2.5*inch])
+    header_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    story.append(header_table)
+    story.append(Spacer(1, 20))
+
+    # Detalle de la factura
+    detalle_data = [
+        ['<b>CONCEPTO</b>', '<b>SUBTOTAL</b>'],
+        ['Habitación', f'${factura.subtotal_habitacion:,.2f}'],
+        ['Consumos', f'${factura.subtotal_consumos:,.2f}'],
+        ['Servicios', f'${hospedada.subtotal_servicios:,.2f}'],
+        ['Ajustes', f'${factura.subtotal_ajustes:,.2f}'],
+        ['Impuestos (IVA)', f'${factura.impuestos:,.2f}'],
+        ['<b>TOTAL</b>', f'<b>${factura.total:,.2f}</b>'],
+    ]
+
+    detalle_table = Table(detalle_data, colWidths=[4*inch, 2*inch])
+    detalle_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+    ]))
+
+    story.append(detalle_table)
+    story.append(Spacer(1, 20))
+
+    # Observaciones
+    if factura.observaciones:
+        story.append(Paragraph(f"<b>Observaciones:</b> {factura.observaciones}", styles['Normal']))
+
+    # Generar PDF
+    doc.build(story)
+
+    # Preparar respuesta
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="factura_{factura.numero_factura}.pdf"'
+
+    return response
+
+
+# === RESERVAS ===
+def reserva_detail(request, reserva_id):
+    """Vista de detalle de una reserva"""
+    reserva = get_object_or_404(Reserva, id=reserva_id)
+
+    context = {
+        'reserva': reserva,
+    }
+
+    return render(request, 'hotel/reserva_detail.html', context)
+
+
+def reserva_convertir(request, reserva_id):
+    """Convertir una reserva a hospedada"""
+    reserva = get_object_or_404(Reserva, id=reserva_id)
+
+    # Verificar que la reserva se puede convertir
+    if reserva.estado == 'convertida':
+        messages.error(request, 'Esta reserva ya ha sido convertida a hospedada.')
+        return redirect('hotel:reserva_detail', reserva_id=reserva.id)
+
+    if reserva.estado == 'cancelada':
+        messages.error(request, 'No se puede convertir una reserva cancelada.')
+        return redirect('hotel:reserva_detail', reserva_id=reserva.id)
+
+    try:
+        # Verificar si la habitación está disponible
+        if reserva.habitacion.estado != 'disponible':
+            messages.error(request, f'La habitación {reserva.habitacion.numero} no está disponible. Estado actual: {reserva.habitacion.get_estado_display()}')
+            return redirect('hotel:reserva_detail', reserva_id=reserva.id)
+
+        # Convertir la reserva a hospedada
+        hospedada = reserva.convertir_a_hospedada(
+            tipo_hospedada='continua',
+            usuario=request.user if request.user.is_authenticated else None
+        )
+
+        messages.success(request, f'Reserva convertida exitosamente a hospedada {hospedada.numero_hospedada}')
+        return redirect('hotel:hospedada_detail', hospedada_id=hospedada.id)
+
+    except Exception as e:
+        messages.error(request, f'Error al convertir la reserva: {str(e)}')
+        return redirect('hotel:reserva_detail', reserva_id=reserva.id)
 
 
 # === REPORTES Y EXPORTACIÓN ===
@@ -944,15 +1108,15 @@ def exportar_contabilidad(request):
     # Facturas
     facturas = Factura.objects.filter(
         fecha_emision__date__range=[fecha_desde, fecha_hasta]
-    ).select_related('reserva__cliente')
-    
+    ).select_related('hospedada__cliente')
+
     for factura in facturas:
         writer.writerow([
             factura.fecha_emision.strftime('%Y-%m-%d'),
             'Factura',
             factura.numero_factura,
-            factura.reserva.cliente.nombre_completo,
-            f'Reserva {factura.reserva.numero_reserva}',
+            factura.hospedada.cliente.nombre_completo,
+            f'Hospedada {factura.hospedada.numero_hospedada}',
             factura.total,
             ''
         ])
@@ -960,14 +1124,14 @@ def exportar_contabilidad(request):
     # Pagos
     pagos = Pago.objects.filter(
         fecha_pago__date__range=[fecha_desde, fecha_hasta]
-    ).select_related('reserva__cliente')
-    
+    ).select_related('hospedada__cliente')
+
     for pago in pagos:
         writer.writerow([
             pago.fecha_pago.strftime('%Y-%m-%d'),
             'Pago',
             pago.numero_pago,
-            pago.reserva.cliente.nombre_completo,
+            pago.hospedada.cliente.nombre_completo,
             f'Pago {pago.get_tipo_pago_display()}',
             pago.monto,
             pago.get_metodo_pago_display()
@@ -985,8 +1149,8 @@ def reportes(request):
         'ocupacion_hoy': Habitacion.objects.filter(estado='ocupada').count(),
         'total_habitaciones': Habitacion.objects.count(),
         'reservas_mes': Reserva.objects.filter(
-            fecha_entrada__month=timezone.now().month,
-            fecha_entrada__year=timezone.now().year
+            fecha_entrada_prevista__month=timezone.now().month,
+            fecha_entrada_prevista__year=timezone.now().year
         ).count(),
         'ingresos_mes': Pago.objects.filter(
             fecha_pago__month=timezone.now().month,
@@ -1387,8 +1551,8 @@ def reporte_por_fecha_pdf(request):
     # Crear documento PDF
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
     
-    # Obtener reservas en el rango de fechas
-    reservas = Reserva.objects.filter(
+    # Obtener hospedadas en el rango de fechas
+    hospedadas = Hospedada.objects.filter(
         fecha_entrada__range=[fecha_desde, fecha_hasta]
     ).select_related(
         'cliente', 'habitacion__tipo'
@@ -1419,36 +1583,36 @@ def reporte_por_fecha_pdf(request):
     info_general = f"""
     <b>Fecha del reporte:</b> {fecha_reporte}<br/>
     <b>Período:</b> {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}<br/>
-    <b>Total de reservas:</b> {reservas.count()}
+    <b>Total de hospedadas:</b> {hospedadas.count()}
     """
-    
+
     story.append(Paragraph(info_general, styles['Normal']))
     story.append(Spacer(1, 20))
-    
-    if not reservas:
-        story.append(Paragraph("No se encontraron reservas en el período especificado.", styles['Normal']))
+
+    if not hospedadas:
+        story.append(Paragraph("No se encontraron hospedadas en el período especificado.", styles['Normal']))
     else:
         # Estadísticas del período
-        total_ingresos = sum(r.total_con_ajustes for r in reservas)
-        total_pagado = sum(sum(p.monto for p in r.pago_set.all()) for r in reservas)
+        total_ingresos = sum(h.total_con_ajustes for h in hospedadas)
+        total_pagado = sum(sum(p.monto for p in h.pago_set.all()) for h in hospedadas)
         saldo_pendiente_total = total_ingresos - total_pagado
         
         # Contar por estado
         estados_count = {}
-        for reserva in reservas:
-            estado = reserva.get_estado_display()
+        for hospedada in hospedadas:
+            estado = hospedada.get_estado_display()
             estados_count[estado] = estados_count.get(estado, 0) + 1
-        
+
         estadisticas_data = [
             ['<b>ESTADÍSTICAS DEL PERÍODO</b>', ''],
             ['Total de ingresos:', f"${total_ingresos:,.2f}"],
             ['Total pagado:', f"${total_pagado:,.2f}"],
             ['Saldo pendiente:', f"${saldo_pendiente_total:,.2f}"],
         ]
-        
+
         # Agregar estadísticas por estado
         for estado, count in estados_count.items():
-            estadisticas_data.append([f"Reservas {estado}:", str(count)])
+            estadisticas_data.append([f"Hospedadas {estado}:", str(count)])
         
         estadisticas_table = Table(estadisticas_data, colWidths=[3*inch, 2*inch])
         estadisticas_table.setStyle(TableStyle([
@@ -1463,29 +1627,29 @@ def reporte_por_fecha_pdf(request):
         story.append(estadisticas_table)
         story.append(Spacer(1, 20))
         
-        # Tabla resumen de reservas
-        story.append(Paragraph("<b>DETALLE DE RESERVAS</b>", styles['Heading2']))
-        
-        reservas_data = [['Reserva', 'Cliente', 'Habitación', 'Entrada', 'Salida', 'Estado', 'Total', 'Pagado', 'Pendiente']]
-        
-        for reserva in reservas:
-            fecha_salida = reserva.fecha_salida.strftime('%d/%m/%Y') if reserva.fecha_salida else 'Indefinida'
-            total_pagado_reserva = sum(p.monto for p in reserva.pago_set.all())
-            
-            reservas_data.append([
-                reserva.numero_reserva,
-                reserva.cliente.nombre_completo,
-                f"{reserva.habitacion.numero}",
-                reserva.fecha_entrada.strftime('%d/%m/%Y'),
+        # Tabla resumen de hospedadas
+        story.append(Paragraph("<b>DETALLE DE HOSPEDADAS</b>", styles['Heading2']))
+
+        hospedadas_data = [['Hospedada', 'Cliente', 'Habitación', 'Entrada', 'Salida', 'Estado', 'Total', 'Pagado', 'Pendiente']]
+
+        for hospedada in hospedadas:
+            fecha_salida = hospedada.fecha_salida.strftime('%d/%m/%Y') if hospedada.fecha_salida else 'Indefinida'
+            total_pagado_hospedada = sum(p.monto for p in hospedada.pago_set.all())
+
+            hospedadas_data.append([
+                hospedada.numero_hospedada,
+                hospedada.cliente.nombre_completo,
+                f"{hospedada.habitacion.numero}",
+                hospedada.fecha_entrada.strftime('%d/%m/%Y'),
                 fecha_salida,
-                reserva.get_estado_display(),
-                f"${reserva.total_con_ajustes:,.0f}",
-                f"${total_pagado_reserva:,.0f}",
-                f"${reserva.saldo_pendiente:,.0f}"
+                hospedada.get_estado_display(),
+                f"${hospedada.total_con_ajustes:,.0f}",
+                f"${total_pagado_hospedada:,.0f}",
+                f"${hospedada.saldo_pendiente:,.0f}"
             ])
-        
-        reservas_table = Table(reservas_data, colWidths=[0.8*inch, 1.2*inch, 0.6*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.7*inch, 0.7*inch, 0.7*inch])
-        reservas_table.setStyle(TableStyle([
+
+        hospedadas_table = Table(hospedadas_data, colWidths=[0.8*inch, 1.2*inch, 0.6*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.7*inch, 0.7*inch, 0.7*inch])
+        hospedadas_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.lightsteelblue),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -1493,8 +1657,8 @@ def reporte_por_fecha_pdf(request):
             ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('GRID', (0, 0), (-1, -1), 1, colors.black)
         ]))
-        
-        story.append(reservas_table)
+
+        story.append(hospedadas_table)
     
     # Generar PDF
     doc.build(story)
@@ -1521,58 +1685,75 @@ def api_habitaciones_disponibles(request):
     # Si hay fecha de salida, verificar conflictos normalmente
     if fecha_salida:
         fecha_salida = datetime.strptime(fecha_salida, '%Y-%m-%d').date()
-        
-        # Habitaciones ocupadas en esas fechas
-        ocupadas = Reserva.objects.filter(
+
+        # Habitaciones ocupadas por reservas confirmadas o pendientes
+        ocupadas_reservas = Reserva.objects.filter(
+            estado__in=['pendiente', 'confirmada'],
+            fecha_entrada_prevista__lt=fecha_salida,
+            fecha_salida_prevista__gt=fecha_entrada
+        ).values_list('habitacion_id', flat=True)
+
+        # Habitaciones ocupadas por hospedadas activas
+        ocupadas_hospedadas = Hospedada.objects.filter(
             estado__in=['confirmada', 'en_curso'],
             fecha_entrada__lt=fecha_salida,
             fecha_salida__gt=fecha_entrada
         ).exclude(fecha_salida__isnull=True).values_list('habitacion_id', flat=True)
+
+        ocupadas = list(ocupadas_reservas) + list(ocupadas_hospedadas)
     else:
-        # Para reservas indefinidas, verificar habitaciones que no estén ocupadas actualmente
-        # o que tengan reservas indefinidas activas
-        ocupadas = Reserva.objects.filter(
+        # Para hospedadas indefinidas, verificar habitaciones que no estén ocupadas actualmente
+        ocupadas_reservas = Reserva.objects.filter(
+            estado__in=['pendiente', 'confirmada'],
+            fecha_entrada_prevista__lte=fecha_entrada
+        ).filter(
+            fecha_salida_prevista__gt=fecha_entrada
+        ).values_list('habitacion_id', flat=True)
+
+        ocupadas_hospedadas = Hospedada.objects.filter(
             estado__in=['confirmada', 'en_curso'],
             fecha_entrada__lte=fecha_entrada
         ).filter(
-            models.Q(fecha_salida__isnull=True) | 
+            models.Q(fecha_salida__isnull=True) |
             models.Q(fecha_salida__gt=fecha_entrada)
         ).values_list('habitacion_id', flat=True)
+
+        ocupadas = list(ocupadas_reservas) + list(ocupadas_hospedadas)
     
     habitaciones = Habitacion.objects.exclude(
         id__in=ocupadas
     ).filter(estado='disponible').select_related('tipo')
-    
+
     data = [{
         'id': h.id,
         'numero': h.numero,
         'tipo': h.tipo.nombre,
         'precio': float(h.tipo.precio_por_noche)
     } for h in habitaciones]
-    
-    return JsonResponse({'habitaciones': data})
+
+    return JsonResponse({'success': True, 'habitaciones': data})
 
 
 def api_buscar_cliente(request):
     """API para buscar clientes"""
     query = request.GET.get('q', '')
     if len(query) < 2:
-        return JsonResponse({'clientes': []})
-    
+        return JsonResponse({'success': True, 'clientes': []})
+
     clientes = Cliente.objects.filter(
         Q(nombre__icontains=query) |
         Q(apellido__icontains=query) |
         Q(numero_documento__icontains=query)
     )[:10]
-    
+
     data = [{
         'id': c.id,
         'nombre_completo': c.nombre_completo,
         'numero_documento': c.numero_documento,
         'telefono': c.telefono
     } for c in clientes]
-    
-    return JsonResponse({'clientes': data})
+
+    return JsonResponse({'success': True, 'clientes': data})
 
 
 @csrf_exempt
@@ -1679,7 +1860,7 @@ def api_agregar_ajuste(request):
                 porcentaje = None
             
             ajuste = AjustePrecio.objects.create(
-                reserva=reserva,
+                hospedada=hospedada,
                 tipo=data['tipo'],
                 concepto=data['concepto'],
                 monto=monto,
@@ -1968,17 +2149,22 @@ def api_agregar_servicio(request):
     """API para agregar servicio desde el detalle de hospedada"""
     if request.method == 'POST':
         data = json.loads(request.body)
-        
+
         hospedada_id = data.get('hospedada_id')
         tipo_servicio_id = data.get('tipo_servicio_id')
         cantidad = data.get('cantidad', 1)
         precio = data.get('precio')
         observaciones = data.get('observaciones', '')
-        
+
         try:
             hospedada = Hospedada.objects.get(id=hospedada_id)
             tipo_servicio = TipoServicio.objects.get(id=tipo_servicio_id)
-            
+
+            # Convertir cantidad y precio explícitamente
+            cantidad = int(cantidad)
+            from decimal import Decimal
+            precio = Decimal(str(precio))
+
             servicio = ServicioHospedada.objects.create(
                 hospedada=hospedada,
                 tipo_servicio=tipo_servicio,
@@ -1987,7 +2173,7 @@ def api_agregar_servicio(request):
                 observaciones=observaciones,
                 registrado_por=request.user if request.user.is_authenticated else None
             )
-            
+
             return JsonResponse({
                 'success': True,
                 'message': f'Servicio agregado: {tipo_servicio.nombre}',
@@ -2215,3 +2401,72 @@ from .views_reservas import (
     reserva_convertir,
     api_verificar_disponibilidad
 )
+
+
+# === AUTENTICACIÓN ===
+def usuario_login(request):
+    """Vista de login personalizada"""
+    if request.user.is_authenticated:
+        return redirect('hotel:dashboard')
+
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+
+        if username and password:
+            user = authenticate(request, username=username, password=password)
+            if user is not None:
+                try:
+                    perfil = PerfilUsuario.objects.get(user=user)
+                    if perfil.activo:
+                        login(request, user)
+                        messages.success(request, f'Bienvenido, {user.first_name or user.username}!')
+
+                        # Redirigir según el rol
+                        next_url = request.GET.get('next', 'hotel:dashboard')
+                        return redirect(next_url)
+                    else:
+                        messages.error(request, 'Tu cuenta está inactiva. Contacta al administrador.')
+                except PerfilUsuario.DoesNotExist:
+                    messages.error(request, 'Tu perfil de usuario no está configurado. Contacta al administrador.')
+            else:
+                messages.error(request, 'Usuario o contraseña incorrectos.')
+        else:
+            messages.error(request, 'Por favor, ingresa usuario y contraseña.')
+
+    return render(request, 'hotel/login.html')
+
+
+def usuario_logout(request):
+    """Vista de logout"""
+    if request.user.is_authenticated:
+        messages.success(request, 'Has cerrado sesión exitosamente.')
+    logout(request)
+    return redirect('hotel:login')
+
+
+@login_required
+def perfil_usuario(request):
+    """Vista del perfil del usuario actual"""
+    try:
+        perfil = PerfilUsuario.objects.get(user=request.user)
+    except PerfilUsuario.DoesNotExist:
+        messages.error(request, 'Tu perfil no está configurado. Contacta al administrador.')
+        return redirect('hotel:dashboard')
+
+    context = {
+        'perfil': perfil,
+        'user': request.user
+    }
+    return render(request, 'hotel/perfil_usuario.html', context)
+
+
+@solo_administrador
+def gestionar_usuarios(request):
+    """Vista para gestionar usuarios (solo administradores)"""
+    usuarios = PerfilUsuario.objects.select_related('user').all().order_by('user__username')
+
+    context = {
+        'usuarios': usuarios
+    }
+    return render(request, 'hotel/gestionar_usuarios.html', context)

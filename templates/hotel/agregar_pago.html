@@ -1,47 +1,47 @@
 {% extends 'base.html' %}
 
-{% block title %}Agregar Pago - Reserva {{ reserva.numero_reserva }}{% endblock %}
+{% block title %}Agregar Pago - Hospedada {{ hospedada.numero_hospedada }}{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
         <h1><i class="fas fa-credit-card"></i> Agregar Pago</h1>
-        <p class="mb-0">Reserva {{ reserva.numero_reserva }} - {{ reserva.cliente.nombre_completo }}</p>
+        <p class="mb-0">Hospedada {{ hospedada.numero_hospedada }} - {{ hospedada.cliente.nombre_completo }}</p>
     </div>
     <div>
-        <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-outline-secondary">
-            <i class="fas fa-arrow-left"></i> Volver a Reserva
+        <a href="{% url 'hotel:hospedada_detail' hospedada.id %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Volver a Hospedada
         </a>
     </div>
 </div>
 
-<!-- Información de la reserva y estado financiero -->
+<!-- Información de la hospedada y estado financiero -->
 <div class="row mb-4">
     <div class="col-md-6">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Información de la Reserva</h5>
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Información de la Hospedada</h5>
             </div>
             <div class="card-body">
-                <p><strong>Cliente:</strong> {{ reserva.cliente.nombre_completo }}</p>
-                <p><strong>Habitación:</strong> {{ reserva.habitacion.numero }} - {{ reserva.habitacion.tipo.nombre }}</p>
-                <p><strong>Fechas:</strong> {{ reserva.fecha_entrada|date:"d/m/Y" }} - 
-                    {% if reserva.fecha_salida %}
-                        {{ reserva.fecha_salida|date:"d/m/Y" }}
-                        <br><small class="text-muted">{{ reserva.dias_estancia }} noches</small>
+                <p><strong>Cliente:</strong> {{ hospedada.cliente.nombre_completo }}</p>
+                <p><strong>Habitación:</strong> {{ hospedada.habitacion.numero }} - {{ hospedada.habitacion.tipo.nombre }}</p>
+                <p><strong>Fechas:</strong> {{ hospedada.fecha_entrada|date:"d/m/Y" }} -
+                    {% if hospedada.fecha_salida %}
+                        {{ hospedada.fecha_salida|date:"d/m/Y" }}
+                        <br><small class="text-muted">{{ hospedada.dias_estancia }} noches</small>
                     {% else %}
                         <span class="badge bg-warning">Indefinida</span>
                         <br><small class="text-muted">Cobrando por días transcurridos</small>
                     {% endif %}
                 </p>
-                <p class="mb-0"><strong>Estado:</strong> 
-                    <span class="badge 
-                        {% if reserva.estado == 'pendiente' %}bg-warning
-                        {% elif reserva.estado == 'confirmada' %}bg-info
-                        {% elif reserva.estado == 'en_curso' %}bg-success
-                        {% elif reserva.estado == 'finalizada' %}bg-secondary
+                <p class="mb-0"><strong>Estado:</strong>
+                    <span class="badge
+                        {% if hospedada.estado == 'pendiente' %}bg-warning
+                        {% elif hospedada.estado == 'confirmada' %}bg-info
+                        {% elif hospedada.estado == 'en_curso' %}bg-success
+                        {% elif hospedada.estado == 'finalizada' %}bg-secondary
                         {% else %}bg-danger{% endif %}">
-                        {{ reserva.get_estado_display }}
+                        {{ hospedada.get_estado_display }}
                     </span>
                 </p>
             </div>
@@ -58,22 +58,22 @@
                 <div class="mb-3">
                     <div class="d-flex justify-content-between">
                         <span>Habitación:</span>
-                        <span>${{ reserva.precio_total|floatformat:2 }}</span>
+                        <span>${{ hospedada.precio_total|floatformat:2 }}</span>
                     </div>
                     <div class="d-flex justify-content-between">
                         <span>Consumos:</span>
-                        <span>${{ reserva.subtotal_consumos|floatformat:2 }}</span>
+                        <span>${{ hospedada.subtotal_consumos|floatformat:2 }}</span>
                     </div>
                     <div class="d-flex justify-content-between">
                         <span>Ajustes:</span>
-                        <span class="{% if reserva.subtotal_ajustes >= 0 %}text-success{% else %}text-danger{% endif %}">
-                            ${{ reserva.subtotal_ajustes|floatformat:2 }}
+                        <span class="{% if hospedada.subtotal_ajustes >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            ${{ hospedada.subtotal_ajustes|floatformat:2 }}
                         </span>
                     </div>
                     <hr>
                     <div class="d-flex justify-content-between fw-bold">
                         <span>Total:</span>
-                        <span>${{ total_reserva|floatformat:2 }}</span>
+                        <span>${{ total_hospedada|floatformat:2 }}</span>
                     </div>
                     <div class="d-flex justify-content-between text-muted">
                         <span>Pagado:</span>
@@ -102,13 +102,13 @@
             <div class="card-body">
                 {% if saldo_pendiente <= 0 %}
                 <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i> 
-                    <strong>Reserva Pagada Completamente</strong><br>
+                    <i class="fas fa-check-circle"></i>
+                    <strong>Hospedada Pagada Completamente</strong><br>
                     No hay saldo pendiente por pagar.
                 </div>
                 <div class="d-flex justify-content-center">
-                    <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-primary">
-                        <i class="fas fa-arrow-left"></i> Volver a Reserva
+                    <a href="{% url 'hotel:hospedada_detail' hospedada.id %}" class="btn btn-primary">
+                        <i class="fas fa-arrow-left"></i> Volver a Hospedada
                     </a>
                 </div>
                 {% else %}
@@ -158,13 +158,13 @@
                         </div>
                     </div>
                     
-                    {% if reserva.empresa %}
+                    {% if hospedada.empresa %}
                     <div class="row">
                         <div class="col-md-12 mb-3">
                             <label for="pagado_por" class="form-label">¿Quién paga? <span class="text-danger">*</span></label>
                             <select name="pagado_por" id="pagado_por" class="form-select" required>
-                                <option value="cliente">Cliente - {{ reserva.cliente.nombre_completo }}</option>
-                                <option value="empresa">Empresa - {{ reserva.empresa.nombre }}</option>
+                                <option value="cliente">Cliente - {{ hospedada.cliente.nombre_completo }}</option>
+                                <option value="empresa">Empresa - {{ hospedada.empresa.nombre }}</option>
                             </select>
                         </div>
                     </div>
@@ -192,7 +192,7 @@
                     <hr>
                     
                     <div class="d-flex justify-content-between">
-                        <a href="{% url 'hotel:reserva_detail' reserva.id %}" class="btn btn-secondary">
+                        <a href="{% url 'hotel:hospedada_detail' hospedada.id %}" class="btn btn-secondary">
                             <i class="fas fa-times"></i> Cancelar
                         </a>
                         <button type="submit" class="btn btn-success">

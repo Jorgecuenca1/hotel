@@ -1,9 +1,12 @@
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import User
 from django.utils.html import format_html
 from .models import (
     TipoHabitacion, Habitacion, Cliente, Hospedada, Empresa, Reserva,
     CategoriaProducto, Producto, ConsumoHabitacion, Pago, Factura,
-    ElementoInventario, InventarioHabitacion, TipoServicio, ServicioHospedada, FaltanteCheckout
+    ElementoInventario, InventarioHabitacion, TipoServicio, ServicioHospedada, FaltanteCheckout,
+    PerfilUsuario
 )
 
 
@@ -199,6 +202,54 @@ class FaltanteCheckoutAdmin(admin.ModelAdmin):
     search_fields = ('hospedada__numero_hospedada', 'elemento__nombre')
     date_hierarchy = 'fecha_registro'
     readonly_fields = ('fecha_registro',)
+
+
+@admin.register(PerfilUsuario)
+class PerfilUsuarioAdmin(admin.ModelAdmin):
+    list_display = ('get_username', 'get_full_name', 'rol_badge', 'activo', 'fecha_creacion')
+    list_filter = ('rol', 'activo', 'fecha_creacion')
+    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'user__email')
+    date_hierarchy = 'fecha_creacion'
+    list_editable = ('activo',)
+    readonly_fields = ('fecha_creacion',)
+
+    def get_username(self, obj):
+        return obj.user.username
+    get_username.short_description = 'Usuario'
+
+    def get_full_name(self, obj):
+        return obj.user.get_full_name() or obj.user.username
+    get_full_name.short_description = 'Nombre Completo'
+
+    def rol_badge(self, obj):
+        colors = {
+            'administrador': 'red',
+            'recepcionista': 'blue'
+        }
+        color = colors.get(obj.rol, 'gray')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 8px; border-radius: 3px;">{}</span>',
+            color,
+            obj.get_rol_display()
+        )
+    rol_badge.short_description = 'Rol'
+
+
+# Inline para mostrar el perfil en el admin de usuarios
+class PerfilUsuarioInline(admin.StackedInline):
+    model = PerfilUsuario
+    can_delete = False
+    verbose_name_plural = 'Perfil de Usuario'
+
+
+# Extender el UserAdmin para incluir el perfil
+class UserAdmin(BaseUserAdmin):
+    inlines = (PerfilUsuarioInline,)
+
+
+# Re-registrar UserAdmin
+admin.site.unregister(User)
+admin.site.register(User, UserAdmin)
 
 
 # Configuración del sitio admin

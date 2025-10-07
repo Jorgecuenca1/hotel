@@ -8,7 +8,7 @@
         <h1><i class="fas fa-calendar-check"></i> Gestión de Hospedadas</h1>
         <p class="mb-0">Administre todas las hospedadas del hotel</p>
     </div>
-    <button class="btn btn-primary" onclick="nuevaReserva()">
+    <button class="btn btn-primary" onclick="nuevaHospedada()">
         <i class="fas fa-plus"></i> Nueva Hospedada
     </button>
 </div>
@@ -407,12 +407,21 @@
 
 {% block extra_js %}
 <script>
+function nuevaHospedada() {
+    document.getElementById('fecha_entrada').value = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('fecha_salida').value = tomorrow.toISOString().split('T')[0];
+
+    $('#modalNuevaReserva').modal('show');
+}
+
 function nuevaReserva() {
     document.getElementById('fecha_entrada').value = new Date().toISOString().split('T')[0];
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     document.getElementById('fecha_salida').value = tomorrow.toISOString().split('T')[0];
-    
+
     $('#modalNuevaReserva').modal('show');
 }
 
@@ -653,14 +662,14 @@ function guardarReserva() {
     }
 
     showLoading();
-    $.post('{% url "hotel:reserva_create" %}', JSON.stringify(data), 'json')
+    $.post('{% url "hotel:hospedada_create" %}', JSON.stringify(data), 'json')
     .done(function(response) {
         if (response.success) {
-            showNotification('success', 'Éxito', 'Reserva creada correctamente');
+            showNotification('success', 'Éxito', 'Hospedada creada correctamente');
             $('#modalNuevaReserva').modal('hide');
             location.reload();
         } else {
-            showNotification('error', 'Error', response.error || 'Error al crear la reserva');
+            showNotification('error', 'Error', response.error || 'Error al crear la hospedada');
         }
     })
     .fail(function() {

@@ -1,0 +1,377 @@
+{% extends 'base.html' %}
+
+{% block title %}Gestionar Usuarios - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-users-cog"></i> Gestión de Usuarios</h1>
+        <p class="mb-0">Administrar usuarios del sistema</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrearUsuario">
+        <i class="fas fa-user-plus"></i> Crear Usuario
+    </button>
+</div>
+
+<!-- Estadísticas rápidas -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card success">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{{ usuarios|length }}</h3>
+                    <p class="mb-0">Total Usuarios</p>
+                </div>
+                <i class="fas fa-users fa-2x opacity-75"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="stat-card primary">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{% for u in usuarios %}{% if u.rol == 'administrador' %}{{ forloop.counter0|add:1 }}{% endif %}{% endfor %}</h3>
+                    <p class="mb-0">Administradores</p>
+                </div>
+                <i class="fas fa-crown fa-2x opacity-75"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="stat-card warning">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{% for u in usuarios %}{% if u.rol == 'recepcionista' %}{{ forloop.counter0|add:1 }}{% endif %}{% endfor %}</h3>
+                    <p class="mb-0">Recepcionistas</p>
+                </div>
+                <i class="fas fa-user-tie fa-2x opacity-75"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="stat-card danger">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h3 class="mb-0">{% for u in usuarios %}{% if not u.activo %}{{ forloop.counter0|add:1 }}{% endif %}{% endfor %}</h3>
+                    <p class="mb-0">Inactivos</p>
+                </div>
+                <i class="fas fa-user-slash fa-2x opacity-75"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla de usuarios -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-table"></i> Lista de Usuarios
+        </h5>
+    </div>
+    <div class="card-body">
+        {% if usuarios %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Nombre Completo</th>
+                        <th>Email</th>
+                        <th>Rol</th>
+                        <th>Estado</th>
+                        <th>Último Acceso</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for perfil in usuarios %}
+                    <tr>
+                        <td>
+                            <strong>{{ perfil.user.username }}</strong>
+                        </td>
+                        <td>{{ perfil.user.first_name }} {{ perfil.user.last_name }}</td>
+                        <td>
+                            {% if perfil.user.email %}
+                                <i class="fas fa-envelope text-muted"></i> {{ perfil.user.email }}
+                            {% else %}
+                                <span class="text-muted">Sin email</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{% if perfil.rol == 'administrador' %}danger{% else %}primary{% endif %} fs-6">
+                                <i class="fas fa-{% if perfil.rol == 'administrador' %}crown{% else %}user-tie{% endif %}"></i>
+                                {{ perfil.get_rol_display }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{% if perfil.activo %}success{% else %}secondary{% endif %} fs-6">
+                                <i class="fas fa-{% if perfil.activo %}check-circle{% else %}times-circle{% endif %}"></i>
+                                {% if perfil.activo %}Activo{% else %}Inactivo{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            {% if perfil.user.last_login %}
+                                <small class="text-muted">
+                                    <i class="fas fa-clock"></i> {{ perfil.user.last_login|date:"d/m/Y H:i" }}
+                                </small>
+                            {% else %}
+                                <small class="text-muted">Nunca</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button class="btn btn-outline-primary" onclick="editarUsuario({{ perfil.id }})" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% if perfil.activo %}
+                                <button class="btn btn-outline-warning" onclick="toggleEstadoUsuario({{ perfil.id }}, false)" title="Desactivar">
+                                    <i class="fas fa-user-slash"></i>
+                                </button>
+                                {% else %}
+                                <button class="btn btn-outline-success" onclick="toggleEstadoUsuario({{ perfil.id }}, true)" title="Activar">
+                                    <i class="fas fa-user-check"></i>
+                                </button>
+                                {% endif %}
+                                {% if perfil.user.username != user.username %}
+                                <button class="btn btn-outline-danger" onclick="confirmarEliminar({{ perfil.id }}, '{{ perfil.user.username }}')" title="Eliminar">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="fas fa-users fa-3x text-muted mb-3"></i>
+            <h5>No hay usuarios registrados</h5>
+            <p class="text-muted">Crea el primer usuario del sistema.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal para crear usuario -->
+<div class="modal fade" id="modalCrearUsuario" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-plus"></i> Crear Nuevo Usuario
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formCrearUsuario">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre de Usuario <span class="text-danger">*</span></label>
+                            <input type="text" name="username" class="form-control" required>
+                            <small class="text-muted">Sin espacios ni caracteres especiales</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Contraseña <span class="text-danger">*</span></label>
+                            <input type="password" name="password" class="form-control" required>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre</label>
+                            <input type="text" name="first_name" class="form-control">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Apellido</label>
+                            <input type="text" name="last_name" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Correo Electrónico</label>
+                        <input type="email" name="email" class="form-control">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Rol <span class="text-danger">*</span></label>
+                            <select name="rol" class="form-select" required>
+                                <option value="">Seleccionar rol...</option>
+                                <option value="administrador">Administrador</option>
+                                <option value="recepcionista">Recepcionista</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Estado</label>
+                            <select name="activo" class="form-select">
+                                <option value="true">Activo</option>
+                                <option value="false">Inactivo</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Crear Usuario
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para editar usuario -->
+<div class="modal fade" id="modalEditarUsuario" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-edit"></i> Editar Usuario
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formEditarUsuario">
+                <input type="hidden" name="user_id">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre de Usuario</label>
+                            <input type="text" name="username" class="form-control" readonly>
+                            <small class="text-muted">No se puede modificar</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nueva Contraseña</label>
+                            <input type="password" name="password" class="form-control">
+                            <small class="text-muted">Dejar vacío para no cambiar</small>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre</label>
+                            <input type="text" name="first_name" class="form-control">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Apellido</label>
+                            <input type="text" name="last_name" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Correo Electrónico</label>
+                        <input type="email" name="email" class="form-control">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Rol</label>
+                            <select name="rol" class="form-select">
+                                <option value="administrador">Administrador</option>
+                                <option value="recepcionista">Recepcionista</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Estado</label>
+                            <select name="activo" class="form-select">
+                                <option value="true">Activo</option>
+                                <option value="false">Inactivo</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Guardar Cambios
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Funciones para gestión de usuarios
+function editarUsuario(perfilId) {
+    Swal.fire({
+        title: 'Función en desarrollo',
+        text: 'La edición de usuarios se implementará próximamente.',
+        icon: 'info'
+    });
+}
+
+function toggleEstadoUsuario(perfilId, activar) {
+    const accion = activar ? 'activar' : 'desactivar';
+
+    Swal.fire({
+        title: `¿${accion.charAt(0).toUpperCase() + accion.slice(1)} usuario?`,
+        text: `¿Estás seguro de que quieres ${accion} este usuario?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: activar ? '#28a745' : '#ffc107',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: `Sí, ${accion}`,
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            Swal.fire({
+                title: 'Función en desarrollo',
+                text: 'La activación/desactivación de usuarios se implementará próximamente.',
+                icon: 'info'
+            });
+        }
+    });
+}
+
+function confirmarEliminar(perfilId, username) {
+    Swal.fire({
+        title: '¿Eliminar usuario?',
+        text: `¿Estás seguro de que quieres eliminar al usuario "${username}"? Esta acción no se puede deshacer.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            Swal.fire({
+                title: 'Función en desarrollo',
+                text: 'La eliminación de usuarios se implementará próximamente.',
+                icon: 'info'
+            });
+        }
+    });
+}
+
+// Formulario crear usuario
+$('#formCrearUsuario').on('submit', function(e) {
+    e.preventDefault();
+
+    Swal.fire({
+        title: 'Función en desarrollo',
+        text: 'La creación de usuarios se implementará próximamente.',
+        icon: 'info'
+    });
+});
+
+// Formulario editar usuario
+$('#formEditarUsuario').on('submit', function(e) {
+    e.preventDefault();
+
+    Swal.fire({
+        title: 'Función en desarrollo',
+        text: 'La edición de usuarios se implementará próximamente.',
+        icon: 'info'
+    });
+});
+</script>
+{% endblock %}

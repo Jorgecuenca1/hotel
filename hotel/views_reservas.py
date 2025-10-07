@@ -46,14 +46,27 @@ def reserva_create(request):
     if request.method == 'POST':
         data = json.loads(request.body)
         try:
-            cliente = get_object_or_404(Cliente, id=data['cliente_id'])
+            # Validar que cliente_id sea válido
+            cliente_id = data.get('cliente_id')
+            if not cliente_id:
+                return JsonResponse({'success': False, 'error': 'Debe seleccionar un cliente'})
+
+            cliente = get_object_or_404(Cliente, id=cliente_id)
             habitacion = get_object_or_404(Habitacion, id=data['habitacion_id'])
-            
-            # Obtener empresa si se proporciona
+
+            # Obtener empresa si se proporciona (manejar string vacío)
             empresa = None
-            if data.get('empresa_id'):
-                empresa = get_object_or_404(Empresa, id=data['empresa_id'])
+            empresa_id = data.get('empresa_id')
+            if empresa_id and empresa_id != '':
+                empresa = get_object_or_404(Empresa, id=empresa_id)
             
+            # Manejar precio acordado (puede ser None o string vacío)
+            precio_acordado = data.get('precio_acordado')
+            if precio_acordado == '' or precio_acordado is None:
+                precio_acordado = None
+            else:
+                precio_acordado = float(precio_acordado)
+
             # Crear la reserva
             reserva = Reserva.objects.create(
                 cliente=cliente,
@@ -61,8 +74,8 @@ def reserva_create(request):
                 habitacion=habitacion,
                 fecha_entrada_prevista=datetime.strptime(data['fecha_entrada'], '%Y-%m-%d').date(),
                 fecha_salida_prevista=datetime.strptime(data['fecha_salida'], '%Y-%m-%d').date(),
-                numero_huespedes=data.get('numero_huespedes', 1),
-                precio_acordado=data.get('precio_acordado'),
+                numero_huespedes=int(data.get('numero_huespedes', 1)),
+                precio_acordado=precio_acordado,
                 observaciones=data.get('observaciones', ''),
                 usuario_creacion=request.user if request.user.is_authenticated else None
             )

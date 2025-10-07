@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+
+{% block title %}Reserva {{ reserva.numero_reserva }} - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="fas fa-calendar-check"></i> Reserva {{ reserva.numero_reserva }}</h1>
+        <p class="mb-0">Estado: <span class="badge bg-{% if reserva.estado == 'confirmada' %}success{% elif reserva.estado == 'pendiente' %}warning{% elif reserva.estado == 'cancelada' %}danger{% else %}info{% endif %}">{{ reserva.get_estado_display }}</span></p>
+    </div>
+    <div>
+        {% if reserva.estado != 'convertida' and reserva.estado != 'cancelada' %}
+        <a href="{% url 'hotel:reserva_convertir' reserva.id %}" class="btn btn-success" onclick="return confirm('¿Está seguro de convertir esta reserva a hospedada? La habitación será marcada como ocupada.')">
+            <i class="fas fa-exchange-alt"></i> Convertir a Hospedada
+        </a>
+        {% endif %}
+        {% if reserva.estado == 'convertida' and reserva.hospedada_convertida %}
+        <a href="{% url 'hotel:hospedada_detail' reserva.hospedada_convertida.id %}" class="btn btn-primary">
+            <i class="fas fa-bed"></i> Ver Hospedada
+        </a>
+        {% endif %}
+        <a href="{% url 'hotel:reservas' %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Volver
+        </a>
+    </div>
+</div>
+
+<!-- Información de la Reserva -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Información de la Reserva</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <td><strong>Número de Reserva:</strong></td>
+                        <td>{{ reserva.numero_reserva }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Cliente:</strong></td>
+                        <td>{{ reserva.cliente.nombre_completo }}</td>
+                    </tr>
+                    {% if reserva.empresa %}
+                    <tr>
+                        <td><strong>Empresa:</strong></td>
+                        <td>{{ reserva.empresa.nombre }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td><strong>Habitación:</strong></td>
+                        <td>{{ reserva.habitacion.numero }} - {{ reserva.habitacion.tipo.nombre }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Número de Huéspedes:</strong></td>
+                        <td>{{ reserva.numero_huespedes }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Estado:</strong></td>
+                        <td><span class="badge bg-{% if reserva.estado == 'confirmada' %}success{% elif reserva.estado == 'pendiente' %}warning{% elif reserva.estado == 'cancelada' %}danger{% else %}info{% endif %}">{{ reserva.get_estado_display }}</span></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-calendar"></i> Fechas</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <td><strong>Fecha de Entrada Prevista:</strong></td>
+                        <td>{{ reserva.fecha_entrada_prevista|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Fecha de Salida Prevista:</strong></td>
+                        <td>{{ reserva.fecha_salida_prevista|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Fecha de Creación:</strong></td>
+                        <td>{{ reserva.fecha_creacion|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% if reserva.usuario_creacion %}
+                    <tr>
+                        <td><strong>Creada por:</strong></td>
+                        <td>{{ reserva.usuario_creacion.username }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Información de Precio -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-dollar-sign"></i> Información de Precio</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    {% if reserva.precio_acordado %}
+                    <tr>
+                        <td><strong>Precio Acordado:</strong></td>
+                        <td class="text-end"><strong>${{ reserva.precio_acordado|floatformat:2 }}</strong></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td><strong>Precio por Noche:</strong></td>
+                        <td class="text-end">${{ reserva.habitacion.tipo.precio_por_noche|floatformat:2 }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Observaciones -->
+{% if reserva.observaciones %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-sticky-note"></i> Observaciones</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-0">{{ reserva.observaciones }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Información de Conversión -->
+{% if reserva.estado == 'convertida' and reserva.hospedada_convertida %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="alert alert-info">
+            <h5><i class="fas fa-check-circle"></i> Reserva Convertida</h5>
+            <p class="mb-0">Esta reserva ha sido convertida a la hospedada <strong>{{ reserva.hospedada_convertida.numero_hospedada }}</strong>.</p>
+            <a href="{% url 'hotel:hospedada_detail' reserva.hospedada_convertida.id %}" class="btn btn-sm btn-primary mt-2">
+                <i class="fas fa-bed"></i> Ver Hospedada
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

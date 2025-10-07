@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+
+{% block title %}Mi Perfil - Sistema de Gestión Hotelera{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-user"></i> Mi Perfil</h1>
+    <p class="mb-0">Información de tu cuenta de usuario</p>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-id-card"></i> Información Personal
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Usuario:</label>
+                            <p class="form-control-plaintext">{{ user.username }}</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Nombre:</label>
+                            <p class="form-control-plaintext">{{ user.first_name }} {{ user.last_name }}</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Correo Electrónico:</label>
+                            <p class="form-control-plaintext">{{ user.email }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Rol:</label>
+                            <p class="form-control-plaintext">
+                                <span class="badge bg-{% if perfil.rol == 'administrador' %}danger{% else %}primary{% endif %} fs-6">
+                                    <i class="fas fa-{% if perfil.rol == 'administrador' %}crown{% else %}user-tie{% endif %}"></i>
+                                    {{ perfil.get_rol_display }}
+                                </span>
+                            </p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Estado:</label>
+                            <p class="form-control-plaintext">
+                                <span class="badge bg-{% if perfil.activo %}success{% else %}secondary{% endif %} fs-6">
+                                    <i class="fas fa-{% if perfil.activo %}check-circle{% else %}times-circle{% endif %}"></i>
+                                    {% if perfil.activo %}Activo{% else %}Inactivo{% endif %}
+                                </span>
+                            </p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Fecha de Registro:</label>
+                            <p class="form-control-plaintext">{{ user.date_joined|date:"d/m/Y H:i" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-key"></i> Acciones
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'admin:password_change' %}" class="btn btn-outline-primary">
+                        <i class="fas fa-lock"></i> Cambiar Contraseña
+                    </a>
+                    <a href="{% url 'hotel:dashboard' %}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Volver al Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        {% if perfil.rol == 'administrador' %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-users-cog"></i> Administración
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'hotel:gestionar_usuarios' %}" class="btn btn-outline-warning">
+                        <i class="fas fa-users"></i> Gestionar Usuarios
+                    </a>
+                    <a href="{% url 'admin:index' %}" class="btn btn-outline-danger">
+                        <i class="fas fa-tools"></i> Panel de Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle"></i> Permisos
+                </h5>
+            </div>
+            <div class="card-body">
+                <small class="text-muted">
+                    {% if perfil.rol == 'administrador' %}
+                        <i class="fas fa-check text-success"></i> Acceso completo al sistema<br>
+                        <i class="fas fa-check text-success"></i> Gestión de usuarios<br>
+                        <i class="fas fa-check text-success"></i> Configuración del sistema<br>
+                        <i class="fas fa-check text-success"></i> Reportes y estadísticas
+                    {% else %}
+                        <i class="fas fa-check text-success"></i> Gestión de hospedadas<br>
+                        <i class="fas fa-check text-success"></i> Gestión de clientes<br>
+                        <i class="fas fa-check text-success"></i> Gestión de empresas<br>
+                        <i class="fas fa-check text-success"></i> Gestión de reservas<br>
+                        <i class="fas fa-times text-danger"></i> Configuración del sistema
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

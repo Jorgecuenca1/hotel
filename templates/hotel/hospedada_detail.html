@@ -724,9 +724,9 @@ function guardarExtension() {
         showNotification('warning', 'Fecha requerida', 'Por favor seleccione una fecha de salida');
         return;
     }
-    
+
     const data = {
-        reserva_id: '{{ hospedada.id }}',
+        hospedada_id: {{ hospedada.id }},
         fecha_salida: nuevaFecha
     };
     
@@ -795,9 +795,9 @@ function agregarAjuste() {
         showNotification('warning', 'Porcentaje inválido', 'El porcentaje debe ser mayor a 0');
         return;
     }
-    
+
     const data = {
-        reserva_id: '{{ hospedada.id }}',
+        hospedada_id: {{ hospedada.id }},
         tipo: tipoAjuste,
         concepto: concepto,
         es_porcentaje: tipoValor === 'porcentaje',

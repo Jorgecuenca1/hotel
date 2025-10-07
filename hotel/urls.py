@@ -4,6 +4,12 @@ from . import views
 app_name = 'hotel'
 
 urlpatterns = [
+    # Autenticación
+    path('login/', views.usuario_login, name='login'),
+    path('logout/', views.usuario_logout, name='logout'),
+    path('perfil/', views.perfil_usuario, name='perfil_usuario'),
+    path('gestionar-usuarios/', views.gestionar_usuarios, name='gestionar_usuarios'),
+
     # Dashboard
     path('', views.dashboard, name='dashboard'),
     
